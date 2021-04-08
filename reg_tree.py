@@ -11,6 +11,41 @@ class GBTree:
         pass
 
 
+class TreeModel:
+    def __init__(self):
+        self.param = Param()
+        self.nodes = np.array(Node(), dtype=object)
+        self.deleted_nodes = None
+
+        self.param.num_nodes = 1;
+        self.param.num_roots = 1;
+        self.param.num_deleted = 0;
+
+        self.node_stat = None
+        self.split_cond = None
+        self.stats = None
+        self.leaf_vector = None
+
+    def delete_node(self, nid):
+        assert nid >= self.param.num_roots, "cannot delete root"
+        self.deleted_nodes = np.append(self.deleted_nodes, nid)
+        self.nodes[nid].set_parent(-1)
+        self.param.num_deleted += 1
+
+    def change_to_leaf(self, rid, value):
+        mssg = "cannot delete a non terminal child"
+        assert self.nodes[self.nodes[rid].cleft()].is_leaf(), mssg
+        assert self.nodes[self.nodes[rid].cright()].is_leaf(), mssg
+        self.deleted_nodes(self.nodes[rid].cleft())
+        self.deleted_nodes(self.nodes[rid].cright())
+        self.nodes[rid].set_leaf(value)
+
+    def collapse_to_leaf(self):
+
+
+
+
+
 class Param:
     def __init__(self):
         self.max_depth = 0
@@ -32,6 +67,19 @@ class Node:
         self.sindex_ = self.split_cond = None
         self.set_split(split_ind, split_cond, default_left)
         self.leaf_value = None
+        self.info_={'leaf_value':None, 'split_cond':None}
+
+    def cleft(self):
+        return self.cleft_
+
+    def cright(self):
+        return self.cright_
+
+    def cdefault(self):
+        if self.default_left():
+            return self.cleft_
+        else:
+            return self.cright_
 
     def set_parent(self, parent, is_left_child=True):
         if is_left_child:
@@ -42,11 +90,11 @@ class Node:
         if default_left:
             split_ind |= (1 << 31)
         self.sindex_ = split_ind
-        self.split_cond = split_cond
+        self.info_['split_cond'] = split_cond
 
     @property
     def defaultchild(self):
-        if self.defaultleft():
+        if self.default_left():
             return self.cleft_
         else:
             return self.cright_
@@ -54,7 +102,7 @@ class Node:
     def split_index(self):
         return self.sindex_ & ((1 << 31) - 1)
 
-    def defaultleft(self):
+    def default_left(self):
         return (self.sindex_ >> 31) != 0
 
     def set_left_child(self, nid):
@@ -69,6 +117,15 @@ class Node:
     def is_left_child(self):
         return (self.parent_ & (1 << 31)) != 0
 
+    def is_leaf(self):
+        return self.cleft_ == -1
+
+    def leaf_value(self):
+        return self.info_['leaf_value']
+
+    def split_cond(self):
+        return self.info_['split_cond']
+
     def is_root(self):
         return self.parent_ == -1
 
@@ -79,6 +136,15 @@ class Node:
         if is_left_child:
             pidx |= (1 << 31)
         self.parent_ = pidx
+
+    def set_leaf(self, value, right=-1):
+        self.info_['leaf_value'] = value
+        self.cleft_ = -1
+        self.cright_ = right
+
+
+
+
 
     def __eq__(self, other):
         return (self.parent_ == other.parent_ and self.cleft_ == other.cleft_
