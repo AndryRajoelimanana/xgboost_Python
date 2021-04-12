@@ -1,17 +1,6 @@
 import numpy as np
 
 
-class ModelParam:
-    def __init__(self, base_score=0.5, num_feature=0, num_class=0):
-        self.base_score = base_score
-        self.num_feature = num_feature
-        self.num_class = num_class
-        self.reserved = np.zeros(32)
-
-    def set_param(self, name, val):
-        setattr(self, name, val)
-
-
 def thresholdL1(w, alpha):
     if w > + alpha:
         return w - alpha

@@ -1,6 +1,6 @@
 import numpy as np
 from params import TrainParam, GradStats
-from data_mat import FMatrixS
+from utils.util import resize, sample_binary
 
 
 class ColMaker:
@@ -14,10 +14,9 @@ class ColMaker:
     def update(self, gpair, p_fmat, info, trees):
         GradStats.check_info(info)
         lr = self.param.learning_rate
-        self.param.learning_rate = lr/len(trees)
+        self.param.learning_rate = lr / len(trees)
         for i in range(len(trees)):
-            builder = Builder(param)
-
+            builder = Builder(self.param)
 
 
 class Builder:
@@ -25,8 +24,9 @@ class Builder:
         self.param = TrainParam()
         self.qexpand_ = self.snode = self.stemp = self.position = None
         self.feat_index = None
+        self.nthread = 1
 
-    def update(self, gpair,  p_fmat, info, p_tree):
+    def update(self, gpair, p_fmat, info, p_tree):
         self.init_data(gpair, p_fmat, info.root_index, p_tree)
         self.init_new_node(gpair, p_fmat, info, p_tree)
 
@@ -35,15 +35,15 @@ class Builder:
         rowset = fmat.buffered_rowset()
         self.position = self.setup_position(gpair, root_index, rowset)
         self.feat_index = self.init(fmat)
-        # stemp, snode = self.setup_stat_temp(1)
-        # self.stemp = stemp
-        # self.snode = snode
-        self.qexpand_ = np.arange(tree.param.num_roots)
-
-    def init_new_node(self, gpair, fmat, info, p_tree):
-        stemp, snode = self.setup_stat_temp(1)
+        stemp, snode = self.setup_stat_temp(self.nthread)
         self.stemp = stemp
         self.snode = snode
+        self.qexpand_ = list(np.arange(tree.param.num_roots))
+
+    def init_new_node(self, gpair, fmat, info, tree):
+        for i in range(len(self.stemp)):
+            resize(self.stemp[i], tree.param.num_nodes, ThreadEntry(self.param))
+        resize(self.snode, tree.param.num_nodes, NodeEntry(self.param))
         rowset = fmat.buffered_rowset()
         ndata = rowset.size()
         for i in range(ndata):
@@ -52,23 +52,38 @@ class Builder:
             if self.position[ridx] < 0:
                 continue
             self.stemp[tid][self.position[ridx]].stats.add_stats(gpair, info,
-                                                               ridx)
+                                                                 ridx)
         for j in len(self.qexpand_):
             nid = self.qexpand[j]
             stats = GradStats(self.param)
-            for tid in range(len(stemp)):
-                stats.add_pair(stemp[tid][nid].stats)
+            for tid in range(len(self.stemp)):
+                stats.add_pair(self.stemp[tid][nid].stats)
             self.snode[nid].stats = stats
             self.snode[nid].root_gain = stats.calc_gain(self.param)
             self.snode[nid].weight = stats.calc_weight(self.param)
 
     def update_queue_expand(self, tree):
+        newnodes = []
+        qexpand = self.qexpand_
+        for i in range(len(qexpand)):
+            nid = qexpand[i]
+            if not tree[nid].is_leaf():
+                newnodes.append(tree[nid].cleft())
+                newnodes.append(tree[nid].cright())
+        self.qexpand_ = np.array(newnodes)
 
+    def enumerate_split(self, data, dstep, fid, gpair, info, temp):
+        qexpand = self.qexpand_
+        for j in range(len(qexpand)):
+            temp[qexpand[j]].stats.clear()
+        c = GradStats(self.param)
+        for it in data:
+            ridx = it.index
 
 
 
     def setup_position(self, gpair, root_index, rowset):
-        position = np.zeros(len(gpair))
+        position = [0]*len(gpair)
         if len(root_index) == 0:
             for i in range(len(rowset)):
                 position[rowset[i]] = 0
@@ -84,7 +99,7 @@ class Builder:
                 ridx = rowset[i]
                 if gpair[ridx].hess < 0:
                     continue
-                if not (np.random.uniform() < self.param.subsample):
+                if not sample_binary(self.param.subsample):
                     position[ridx] = -1
         return position
 
@@ -96,11 +111,12 @@ class Builder:
                 feat_index.append(i)
         n = self.param.colsample_bytree * len(feat_index)
         np.random.shuffle(feat_index)
-        return feat_index[:n]
+        return list(feat_index[:n])
 
+    @staticmethod
     def setup_stat_temp(self, nthread):
-        stemp = np.full(nthread, ThreadEntry(), dtype=object)
-        snode = np.empty()
+        stemp = [[] for _ in range(nthread)]
+        snode = []
         return stemp, snode
 
     def setup_stat_tree(self, tree):
@@ -113,22 +129,6 @@ class Builder:
 class Iupdater:
     def __init__(self):
         pass
-
-
-class ColMaker:
-    def __init__(self):
-        self.param = {}
-
-    def set_param(self, name, value):
-        self.param[name] = value
-
-    def update(self, gpair, p_fmat, trees):
-        self.init_data()
-
-    def init_data(self, gpair, p_fmat, root_index, tree):
-        assert self.param['num_nodes'] == self.param['num_roots'], \
-            "ColMaker: can only grow new tree"
-
 
 
 class Entry:
@@ -162,5 +162,3 @@ class NodeEntry:
         self.root_gain = 0.0
         self.weight = 0.0
         self.best = None
-
-

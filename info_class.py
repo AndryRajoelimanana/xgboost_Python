@@ -18,6 +18,7 @@ class BoosterInfo:
 class MetaInfo:
     def __init__(self):
         self.info = BoosterInfo()
+        self.labels = self.group_ptr = self.weights = self.base_margin = []
         self.clear()
 
     def num_row(self):
@@ -27,14 +28,14 @@ class MetaInfo:
         return self.info.num_col
 
     def clear(self):
-        self.labels = np.empty(0)
-        self.group_ptr = np.empty(0)
-        self.weights = np.empty(0)
-        self.base_margin= np.empty(0)
-        self.info = BoosterInfo()
+        self.labels.clear()
+        self.group_ptr.clear()
+        self.weights.clear()
+        self.base_margin.clear()
+        self.info = BoosterInfo(0, 0)
 
     def get_weight(self, i):
-        if self.weights.size != 0:
+        if len(self.weights) != 0:
             return self.weights[i]
         else:
             return 1
