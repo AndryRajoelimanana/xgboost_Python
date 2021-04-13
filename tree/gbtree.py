@@ -5,6 +5,7 @@ from updaters.pruner import TreePruner
 from updaters.refresher import TreeRefresher
 from tree.tree import RegTree
 from info_class import BoosterInfo
+from utils.simple_matrix import FMatrixS
 
 
 class GBTree:
@@ -53,13 +54,29 @@ class GBTree:
                 self.boost_new_trees(tmp, p_fmat, info, gid)
 
     def predict(self, p_fmat, buffer_offset, info, ntree_limit=0):
+        """ TODO """
         nthread = 1
         info = BoosterInfo()
+        p_fmat = FMatrixS()
+
         resize(self.thread_temp, nthread, RegTree.FVec())
         for i in range(nthread):
             self.thread_temp[i].init(self.mparam.num_feature)
         stride = info.num_row * self.mparam.num_output_group
-
+        iter_i = p_fmat.row_iterator()
+        iter_i.before_first()
+        while iter_i.next():
+            batch = iter_i.value()
+            nsize = batch.size
+            for i in range(nsize):
+                tid = 1
+                feats = self.thread_temp[tid]
+                ridx = batch.base_rowid + i
+                assert ridx < info.num_row, "data row index exceed bound"
+                for gid in range(self.mparam.num_output_group):
+                    buff = -1 if buffer_offset < 0 else buffer_offset + ridx
+                    root_idx = info.get_root(ridx)
+                    self.pred(batch[i], buff, gid, root_idx, feats)
 
     def clear(self):
         self.trees.clear()
@@ -90,7 +107,7 @@ class GBTree:
         self.init_updater()
         # create tree
         new_trees = []
-        for i in self.tparam.num_parallel_tree:
+        for i in range(self.tparam.num_parallel_tree):
             new_trees.append(RegTree())
             for name, val in self.cfg:
                 new_trees[-1].param.set_param(name, val)
@@ -142,9 +159,8 @@ class GBTree:
             for i in range(self.mparam.size_leaf_vector):
                 self.pred_buffer[bid + i + 1] = vec_psum[i]
 
-        out_pred[0] = psum
-        for i in range(self.mparam.size_leaf_vector):
-
+        # out_pred[0] = psum
+        # for i in range(self.mparam.size_leaf_vector):
 
     class TrainParam:
         def __init__(self):
