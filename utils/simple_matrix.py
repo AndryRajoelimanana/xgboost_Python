@@ -74,6 +74,7 @@ class FMatrixS(IFMatrix):
     def col_iterator(self, fset=None):
         if fset is None:
             ncol = self.num_col()
+            print(ncol)
             resize(self.col_iter_.col_index_, ncol)
             for i in range(ncol):
                 self.col_iter_.col_index_[i] = i
@@ -118,7 +119,7 @@ class FMatrixS(IFMatrix):
     class OneBatchIter(IIterator):
         def __init__(self):
             self.at_first_ = True
-            self.batch_ = []
+            self.batch_ = ColBatch()
             self.col_index_ = []
             self.col_data_ = []
 
@@ -285,8 +286,6 @@ def slice_matrix(handle, lst, length):
         resize(ret.row_data_, len(ret.row_data_) + inst.length)
 
 
-
-
 if __name__ == "__main__":
     # y0 = np.array([1, 0, 1, 0])
     # ypred0 = np.array([0.3, 0.5, 0.2, 0.3])
@@ -301,9 +300,11 @@ if __name__ == "__main__":
     nnn = nn.flatten()
     nr, nc = nn.shape
     mattt = DMatrix(nn)
+    # iter_i = mattt.handle.fmat().col_iterator()
     # print(mattt.handle.row_ptr_)
     # bb = DMatrixSimple()
-    # mattt.handle.fmat().init_col_access()
+    mattt.handle.fmat().init_col_access()
+    iter_i = mattt.handle.fmat().col_iterator([1, 3])
     # iter.before_first()
     # batch = iter.value()
     print(0)

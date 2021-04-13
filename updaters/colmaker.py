@@ -1,8 +1,15 @@
 import numpy as np
 from params import TrainParam, GradStats
 from utils.util import resize, sample_binary
+import pandas as pd
+from utils.simple_matrix import DMatrix
+from sklearn import datasets
 
-rt_eps = 1e-4
+
+rt_eps = 1e-5
+rt_2eps = 2e-5
+
+
 class ColMaker:
     """ xgboost.tree  updater_colmaker-inl.hpp"""
     def __init__(self):
@@ -91,13 +98,46 @@ class ColMaker:
                     newnodes.append(tree[nid].cright())
             self.qexpand_ = np.array(newnodes)
 
-        def enumerate_split(self, data, dstep, fid, gpair, info, temp):
+        def enumerate_split(self, data, d_step, fid, gpair, info, temp):
             qexpand = self.qexpand_
             for j in range(len(qexpand)):
                 temp[qexpand[j]].stats.clear()
             c = GradStats(self.param)
             for it in data:
                 ridx = it.index
+                nid = self.position[ridx]
+                if nid < 0:
+                    continue
+                fvalue = it.fvalue
+                e = temp[nid]
+                if e.stats.empty():
+                    e.stats.add(gpair, info, ridx)
+                    e.last_fvalue = fvalue
+                else:
+                    if np.abs(fvalue - e.last_fvalue) > rt_2eps and \
+                            e.stats.sum_hess >= self.param.min_child_weight:
+                        c.set_substract(self.snode[nid].stats, e.stats)
+                        if c.sum_hess >= self.param.min_child_weight:
+                            loss_chg = e.stats.calc_gain(self.param) + \
+                                       c.calc_gain(self.param) - \
+                                       self.snode[nid].root_gain
+                            e.best.update(loss_chg, fid,
+                                          (fvalue + e.last_fvalue)*0.5,
+                                          d_step == -1)
+                    e.stats.add(gpair, info, ridx)
+                    e.last_fvalue = fvalue
+            for i in range(len(qexpand)):
+                nid = qexpand[i]
+                e = temp[nid]
+                c.set_substract(self.snode[nid].stats, e.stats)
+                if e.stats.sum_hess >= self.param.min_child_weight and \
+                    c.sum_hess >= self.param.min_child_weight:
+                    loss_chg = e.stats.calc_gain(self.param) + \
+                               c.calc_gain(self.param) - \
+                               self.snode[nid].root_gain
+                    delta = rt_eps if d_step == 1 else -rt_eps
+                    e.best.update(loss_chg, fid, e.last_fvalue + delta,
+                                  d_step == -1)
 
         def find_split(self, depth, qexpand, gpair, p_fmat, info, p_tree):
             feat_set = self.feat_index
@@ -109,7 +149,7 @@ class ColMaker:
             while iter_i.next():
                 batch = iter_i.value()
                 nsize = batch.size
-                batch_size = np.maximum(nsize/(32*self.nthread), 1)
+                # batch_size = np.maximum(nsize/(32*self.nthread), 1)
                 for i in range(nsize):
                     fid = batch.col_index[i]
                     tid = 1
@@ -139,23 +179,33 @@ class ColMaker:
                     if tree[nid].is_leaf():
                         self.position[ridx] = -1
                     else:
-                        new_pos = tree[nid].cleft() if tree[nid].cleft()  else tree[nid].cright()
+                        new_pos = tree[nid].cleft() if tree[nid].cleft() \
+                            else tree[nid].cright()
                         self.position[ridx] = new_pos
             fsplits = []
             for i in range(len(qexpand)):
                 nid = qexpand[i]
                 if not tree[nid].is_leaf():
                     fsplits.append(tree[nid].split_index())
-            fsplits.sort()
-            resize(fsplits, )
-
-
-
-
-
-
-
-
+            fsplits = np.unique(fsplits).tolist()
+            iter_i = p_fmat.col_iterator(fsplits)
+            while iter_i.next():
+                batch = iter_i.value()
+                for i in range(batch.size):
+                    col = batch[i]
+                    fid = batch.col_index[i]
+                    ndata = col.length
+                    for j in range(ndata):
+                        ridx = col[j].index
+                        fvalue = col[j].fvalue
+                        nid = self.position[ridx]
+                        if nid == -1: continue
+                        nid = tree[nid].parent()
+                        if tree[nid].split_index() == fid:
+                            if fvalue < tree[nid].split_cond():
+                                self.position[ridx] = tree[nid].cleft()
+                            else:
+                                self.position[ridx] = tree[nid].cright()
 
         def setup_position(self, gpair, root_index, rowset):
             position = [0]*len(gpair)
@@ -189,41 +239,51 @@ class ColMaker:
             return list(feat_index[:n])
 
         @staticmethod
-        def setup_stat_temp(self, nthread):
+        def setup_stat_temp(nthread):
             stemp = [[] for _ in range(nthread)]
             snode = []
             return stemp, snode
 
         def setup_stat_tree(self, tree):
             n_node = tree.param.num_nodes
-            stemp = np.full(n_node, self.ThreadEntry(self.param), dtype=object)
-            snode = np.full(n_node, self.NodeEntry(self.param), dtype=object)
+            stemp = [ColMaker.ThreadEntry(self.param)] * n_node
+            snode = [ColMaker.NodeEntry(self.param)] * n_node
             return stemp, snode
 
 
-class Iupdater:
-    def __init__(self):
-        pass
+if __name__ == "__main__":
+    # data = pd.read_csv('~/projects/Learning/OCR_text/opencv-text-detection'
+    #                   '/Python_script/data/covid.csv')
+    diabetes = datasets.load_diabetes()
+    X, y = diabetes.data, diabetes.target
+    dmat = DMatrix(X, label=y)
+    dmat.handle.fmat().init_col_access()
+    print(0)
 
 
-class Entry:
-    def __init__(self, index, fvalue):
-        self.index = index
-        self.fvalue = fvalue
-
-    def cmp_value(self, other):
-        return self.fvalue < other.fvalue
-
-
-class Inst:
-    def __init__(self, entries, length):
-        self.data = entries
-        self.length = length
-
-    def __getitem__(self, item):
-        return self.data[item]
-
-
+# class Iupdater:
+#     def __init__(self):
+#         pass
+#
+#
+# class Entry:
+#     def __init__(self, index, fvalue):
+#         self.index = index
+#         self.fvalue = fvalue
+#
+#     def cmp_value(self, other):
+#         return self.fvalue < other.fvalue
+#
+#
+# class Inst:
+#     def __init__(self, entries, length):
+#         self.data = entries
+#         self.length = length
+#
+#     def __getitem__(self, item):
+#         return self.data[item]
+#
+#
 
 
 

@@ -1,9 +1,10 @@
 import numpy as np
 from utils.data_mat import bst_gpair
 from objective.loss_function import SquareErrorLoss
-from tree.reg_tree import GBTree
+from tree.gbtree import GBTree
 from utils.simple_matrix import DMatrix
 import sys
+from sklearn import datasets
 
 
 class Booster:
@@ -91,7 +92,7 @@ class BoostLearner:
     def set_cache_data(self, mats):
         num_feature = 0
         buffer_size = 0
-        assert self.cache_ == 0, "can only call cache data once"
+        assert len(self.cache_) == 0, "can only call cache data once"
         for i in range(len(mats)):
             duplicate = False
             for j in range(i):
@@ -103,7 +104,7 @@ class BoostLearner:
             self.cache_.append(BoostLearner.CacheEntry(mats[i], buffer_size,
                                                        mats[i].info.num_row()))
             buffer_size += mats[i].info.num_row()
-            num_feature = np.max(num_feature, mats[i].info.num_col())
+            num_feature = np.maximum(num_feature, mats[i].info.num_col())
         if num_feature > self.mparam.num_feature:
             setattr(self, 'bst:numfeature', num_feature)
         setattr(self, 'num_pbuffer', buffer_size)
@@ -140,9 +141,10 @@ class BoostLearner:
             return
         self.obj_ = SquareErrorLoss()
         self.gbm_ = GBTree()
-        # for i in range(self.cfg_.size):
-        #    self.obj_
-        if self.evaluator_.size == 0:
+        for name, val in self.cfg_:
+            self.obj_.set_param(name, val)
+            self.gbm_.set_param(name, val)
+        if len(self.evaluator_) == 0:
             self.evaluator_.add_eval(self.obj_.default_eval_metric())
 
     def predictraw(self, data, ntree_limit=0):
@@ -187,6 +189,7 @@ class Booster_Learn(BoostLearner):
     xgboost_wrapper.cpp xgboost.wrapper
     """
     def __init__(self, mats):
+        super().__init__()
         self.silent = 1
         self.initmodel = False
         self.length = None
@@ -227,12 +230,14 @@ def train(params, dtrain, num_boost_round=10, evals=[], obj=None, feval=None):
 
 
 if __name__ == '__main__':
-    nn = np.array([[1, 0, 3, 4],
-                   [0, 1, 3, 0],
-                   [1, 0, 0, 0],
-                   [0, 0, 1, 5]])
 
-    mattt = DMatrix(nn)
+    diabetes = datasets.load_diabetes()
+    X, y = diabetes.data, diabetes.target
+    dmat = DMatrix(X, label=y)
+    dmat.handle.fmat().init_col_access()
+    bst = Booster(params={}, cache=[dmat])
+    for i in range(3):
+        bst.update(dmat, i)
     # bb = BoostLearner()
     # bb.set_cache_data(mattt)
-    print('jj')
+        print('jj')
