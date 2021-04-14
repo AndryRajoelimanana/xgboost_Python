@@ -1,7 +1,6 @@
 from Booster import BoostLearner
 from sklearn import datasets
-from utils.simple_matrix import DMatrix
-from utils.dmatrix import DMatrix as DMatrix0
+from utils.simple_matrix import DMatrixSimple, DMatrix
 
 
 class BoostLearnTask:
@@ -49,8 +48,9 @@ if __name__ == '__main__':
     diabetes = datasets.load_diabetes()
     X, y = diabetes.data, diabetes.target
     dmat = DMatrix(X, label=y)
+    dmat.handle.fmat().init_col_access()
     bst = BoostLearnTask()
-    bst.run(dmat)
+    bst.run(dmat.handle)
     print(3)
     # dmat.handle.fmat().init_col_access()
     # bst = Booster(params={}, cache=[dmat])

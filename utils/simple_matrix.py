@@ -4,7 +4,7 @@ from info_class import MetaInfo
 from utils.data_io import SparseBatch, RowBatch, ColBatch
 from utils.iterator import IIterator
 from utils.util import resize, sample_binary
-from utils.dmatrix import DMatrix as DMatrix0
+from utils.dmatrix import DataMatrix
 from utils.util import resize
 
 
@@ -149,7 +149,8 @@ class FMatrixS(IFMatrix):
             self.before_first()
 
 
-class DMatrixSimple(DMatrix0):
+class DMatrixSimple(DataMatrix):
+    """ xgboost.io  io/simple_dmatrix-inl.hpp"""
     kmagic = int('0xffffab01', 16)
 
     def __init__(self):

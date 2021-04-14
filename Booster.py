@@ -12,6 +12,7 @@ class Booster:
     """
     xgboost.py
     """
+
     def __init__(self, params={}, cache=[], model_file=None):
         dmats = [d.handle for d in cache]
         self.handle = self.booster_create(dmats, len(cache))
@@ -46,7 +47,7 @@ class Booster:
         """
         XGBoosterUpdateOneIter : xgboost_wrapper.cpp
         """
-        self.handle.init_model()
+        self.handle.check_init_model()
         self.handle.check_init(dtrain)
         self.handle.update_one_iter(i, dtrain)
 
@@ -54,7 +55,7 @@ class Booster:
         """
         XGBoosterBoostOneIter : xgboost_wrapper.cpp
         """
-        self.handle.init_model()
+        self.handle.check_init_model()
         self.handle.check_init(dtrain.handle)
         self.handle.boost_one_iter(dtrain, grad, hess, length)
 
@@ -79,6 +80,7 @@ class BoostLearner:
     """
     learner-inl.hpp (xgboost.learner.BoostLearner)
     """
+
     def __init__(self):
         self.obj_ = None
         self.gbm_ = None
@@ -119,7 +121,8 @@ class BoostLearner:
 
     def init_model(self):
         self.init_obj_gbm()
-        self.mparam.base_score = self.obj_.prob_to_margin(self.mparam.base_score)
+        self.mparam.base_score = self.obj_.prob_to_margin(
+            self.mparam.base_score)
         self.gbm_.init_model()
 
     def check_init(self, p_train):
@@ -191,12 +194,14 @@ class Booster_Learn(BoostLearner):
     """
     xgboost_wrapper.cpp xgboost.wrapper
     """
+
     def __init__(self, mats):
         super().__init__()
         self.silent = 1
         self.initmodel = False
         self.length = None
         self.set_cache_data(mats)
+        print('ll')
 
     def pred(self, dmat, output_margin, ntree_limit):
         self.check_init_model()
@@ -220,15 +225,15 @@ class Booster_Learn(BoostLearner):
 def train(params, dtrain, num_boost_round=10, evals=[], obj=None, feval=None):
     """ train a booster with given paramaters
     """
-    bst = Booster(params, [dtrain]+[d[0] for d in evals])
+    bst = Booster(params, [dtrain] + [d[0] for d in evals])
     for i in range(num_boost_round):
         bst.update(dtrain, i, obj)
         if len(evals) != 0:
             bst_eval_set = bst.eval_set(evals, i, feval)
             if isinstance(bst_eval_set, str):
-                sys.stderr.write(bst_eval_set+'\n')
+                sys.stderr.write(bst_eval_set + '\n')
             else:
-                sys.stderr.write(bst_eval_set.decode()+'\n')
+                sys.stderr.write(bst_eval_set.decode() + '\n')
     return bst
 
 
@@ -238,9 +243,12 @@ if __name__ == '__main__':
     X, y = diabetes.data, diabetes.target
     dmat = DMatrix(X, label=y)
     dmat.handle.fmat().init_col_access()
-    bst = Booster(params={}, cache=[dmat])
-    for i in range(3):
-        bst.update(dmat, i)
-    # bb = BoostLearner()
-    # bb.set_cache_data(mattt)
+    bst = Booster(params={'bst:num_feature': 10, 'num_feature': 10,
+                          'max_depth': 2, 'eta': 1},
+                  cache=[dmat])
+
+    for it in range(3):
+        bst.update(dmat, it)
+        # bb = BoostLearner()
+        # bb.set_cache_data(mattt)
         print('jj')

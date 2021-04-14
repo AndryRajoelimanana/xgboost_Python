@@ -61,6 +61,7 @@ class GBTree:
 
         resize(self.thread_temp, nthread, RegTree.FVec())
         for i in range(nthread):
+            print('tato')
             self.thread_temp[i].init(self.mparam.num_feature)
         stride = info.num_row * self.mparam.num_output_group
         iter_i = p_fmat.row_iterator()
@@ -74,7 +75,7 @@ class GBTree:
                 feats = self.thread_temp[tid]
                 ridx = batch.base_rowid + i
                 print(ridx, batch.base_rowid + i)
-                assert ridx < info.num_row, "data row index exceed bound"
+                # assert ridx < info.num_row, "data row index exceed bound"
                 for gid in range(self.mparam.num_output_group):
                     buff = -1 if buffer_offset < 0 else buffer_offset + ridx
                     root_idx = info.get_root(ridx)
