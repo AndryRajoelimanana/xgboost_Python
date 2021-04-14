@@ -57,7 +57,7 @@ class GBTree:
         """ TODO """
         nthread = 1
         info = BoosterInfo()
-        p_fmat = FMatrixS()
+        # p_fmat = FMatrixS()
 
         resize(self.thread_temp, nthread, RegTree.FVec())
         for i in range(nthread):
@@ -69,9 +69,11 @@ class GBTree:
             batch = iter_i.value()
             nsize = batch.size
             for i in range(nsize):
-                tid = 1
+                # TODO tid value
+                tid = 0
                 feats = self.thread_temp[tid]
                 ridx = batch.base_rowid + i
+                print(ridx, batch.base_rowid + i)
                 assert ridx < info.num_row, "data row index exceed bound"
                 for gid in range(self.mparam.num_output_group):
                     buff = -1 if buffer_offset < 0 else buffer_offset + ridx

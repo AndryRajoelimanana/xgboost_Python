@@ -24,20 +24,20 @@ def create_evaluator(name):
         return EvalMatchError()
     elif name == "logloss":
         return EvalLogLoss()
-    elif name == "auc":
-        return EvalAuc()
-    elif name[:4] == "ams@":
-        return EvalAMS(name)
-    elif name[:4] == "pre@":
-        return EvalPrecision(name)
-    elif name[:7] == "pratio@":
-        return EvalPrecisionRatio(name)
-    elif name[:3] == "map":
-        return EvalMAP(name)
-    elif name[:4] == "ndcg":
-        return EvalNDCG(name)
-    elif name[:3] == "ct-":
-        return EvalCTest(CreateEvaluator(name + 3), name)
+    # elif name == "auc":
+    #     return EvalAuc()
+    # elif name[:4] == "ams@":
+    #     return EvalAMS(name)
+    # elif name[:4] == "pre@":
+    #     return EvalPrecision(name)
+    # elif name[:7] == "pratio@":
+    #     return EvalPrecisionRatio(name)
+    # elif name[:3] == "map":
+    #     return EvalMAP(name)
+    # elif name[:4] == "ndcg":
+    #     return EvalNDCG(name)
+    # elif name[:3] == "ct-":
+    #     return EvalCTest(CreateEvaluator(name + 3), name)
 
 
 class EvalSet:
@@ -65,6 +65,7 @@ class EvalSet:
 
 class EvalEWiseBase(IEvaluator):
     def __init__(self):
+        super().__init__()
         pass
 
     def eval(self, preds, info):
@@ -89,7 +90,7 @@ class EvalEWiseBase(IEvaluator):
 
 class EvalRMSE(EvalEWiseBase):
     def __init__(self):
-        super(EvalRMSE, self).__init__()
+        super().__init__()
 
     def name(self):
         return "rmse"
@@ -104,7 +105,7 @@ class EvalRMSE(EvalEWiseBase):
 
 class EvalLogLoss(EvalEWiseBase):
     def __init__(self):
-        super(EvalLogLoss, self).__init__()
+        super().__init__()
 
     def name(self):
         return "logloss"
@@ -115,7 +116,7 @@ class EvalLogLoss(EvalEWiseBase):
 
 class EvalError(EvalEWiseBase):
     def __init__(self):
-        super(EvalError, self).__init__()
+        super().__init__()
 
     def name(self):
         return "error"
@@ -129,7 +130,7 @@ class EvalError(EvalEWiseBase):
 
 class EvalMatchError(EvalEWiseBase):
     def __init__(self):
-        super(EvalMatchError, self).__init__()
+        super().__init__()
 
     def name(self):
         return "merror"
@@ -140,6 +141,7 @@ class EvalMatchError(EvalEWiseBase):
 
 class EvalCTest(IEvaluator):
     def __init__(self, base, name):
+        super().__init__()
         self.base_ = base
         self.name_ = name
 
@@ -155,5 +157,5 @@ class EvalCTest(IEvaluator):
         for k in range(ngroup):
             for i in range(ndata):
                 if info.info.fold_index[i] == k:
-                    tpred.append(preds[])
+                    tpred.append(preds[i])
 

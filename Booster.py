@@ -5,6 +5,7 @@ from tree.gbtree import GBTree
 from utils.simple_matrix import DMatrix
 import sys
 from sklearn import datasets
+from objective.evaluation import EvalSet
 
 
 class Booster:
@@ -28,7 +29,7 @@ class Booster:
 
     def update(self, dtrain, it, fobj=None):
         if fobj is None:
-            self.update_one_iter(it, dtrain)
+            self.update_one_iter(it, dtrain.handle)
         else:
             pred = self.predict(dtrain)
             grad, hess = fobj(pred, dtrain)
@@ -46,7 +47,7 @@ class Booster:
         XGBoosterUpdateOneIter : xgboost_wrapper.cpp
         """
         self.handle.init_model()
-        self.handle.check_init(dtrain.handle)
+        self.handle.check_init(dtrain)
         self.handle.update_one_iter(i, dtrain)
 
     def boost_one_iter(self, dtrain, grad, hess, length):
@@ -88,6 +89,8 @@ class BoostLearner:
         self.cache_ = []
         self.mparam = BoostLearner.ModelParam()
         self.preds_ = None
+        self.cfg_ = []
+        self.evaluator_ = EvalSet()
 
     def set_cache_data(self, mats):
         num_feature = 0
@@ -144,7 +147,7 @@ class BoostLearner:
         for name, val in self.cfg_:
             self.obj_.set_param(name, val)
             self.gbm_.set_param(name, val)
-        if len(self.evaluator_) == 0:
+        if self.evaluator_.size == 0:
             self.evaluator_.add_eval(self.obj_.default_eval_metric())
 
     def predictraw(self, data, ntree_limit=0):
@@ -171,7 +174,7 @@ class BoostLearner:
             setattr(self, name, val)
 
     def find_buffer_offset(self, mat):
-        for i in range(self.cache_.size):
+        for i in range(len(self.cache_)):
             if self.cache_[i].mat_ == mat and mat.cache_learner_ptr_ == self:
                 if self.cache_[i].num_row_ == mat.info.num_row():
                     return self.cache_[i].buffer_offset_
@@ -180,8 +183,8 @@ class BoostLearner:
     class CacheEntry:
         def __init__(self, mat, buffer_offset, num_row):
             self.mat_ = mat
-            self.buffer_offset = buffer_offset
-            self.num_row = num_row
+            self.buffer_offset_ = buffer_offset
+            self.num_row_ = num_row
 
 
 class Booster_Learn(BoostLearner):
