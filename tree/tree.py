@@ -207,7 +207,12 @@ class TreeModel:
             self.num_feature = None
 
         def set_param(self, name, val):
-            setattr(self, name, val)
+            if name == 'num_roots':
+                self.num_roots = val
+            elif name == 'num_feature':
+                self.num_feature = val
+            elif name == 'size_leaf_vector':
+                self.size_leaf_vector = val
 
 
 class RTreeNodeStat:

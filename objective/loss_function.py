@@ -89,9 +89,9 @@ class LogisticNeglik(RegLossObj):
         return preds * (1 - preds)
 
     def prob_to_margin(self, base_score):
-        assert np.min(base_score) >= 0 and np.max(base_score) <= 1, \
+        assert np.min(base_score) > 0 and np.max(base_score) < 1, \
             'base score should be in (0,1)'
-        base_score = -np.log(1/(base_score - 1))
+        base_score = -np.log(1./base_score - 1)
         return base_score
 
 

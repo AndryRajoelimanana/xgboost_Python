@@ -48,7 +48,7 @@ if __name__ == '__main__':
     diabetes = datasets.load_diabetes()
     X, y = diabetes.data, diabetes.target
     dmat = DMatrix(X, label=y)
-    dmat.handle.fmat().init_col_access()
+    # dmat.handle.fmat().init_col_access()
     bst = BoostLearnTask()
     bst.run(dmat.handle)
     print(3)

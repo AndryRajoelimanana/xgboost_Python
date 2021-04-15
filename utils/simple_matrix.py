@@ -239,9 +239,9 @@ class DMatrix:
             col += ncol
         return mat
 
-    def set_param(self, name, val):
-        setattr(self, name, val)
-        return self
+    # def set_param(self, name, val):
+    #    setattr(self, name, val)
+    #    return self
 
     def get_param(self, name):
         return getattr(self, name)
@@ -250,19 +250,19 @@ class DMatrix:
         return self.label
 
     def set_label(self, label):
-        self.set_param('label', label)
+        self.label = label
 
     def get_base_margin(self):
         return self.base_margin
 
     def set_base_margin(self, margin):
-        self.set_param('base_margin', margin)
+        self.base_margin = margin
 
     def get_weight(self):
         return self.weight
 
     def set_weight(self, weight):
-        self.set_param('weight', weight)
+        self.weight = weight
 
     def num_row(self):
         return self.handle.info.num_row()

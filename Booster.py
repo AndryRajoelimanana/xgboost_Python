@@ -1,6 +1,6 @@
 import numpy as np
 from utils.data_mat import bst_gpair
-from objective.loss_function import SquareErrorLoss
+from objective.loss_function import SquareErrorLoss, LogisticNeglik
 from tree.gbtree import GBTree
 from utils.simple_matrix import DMatrix
 import sys
@@ -99,25 +99,45 @@ class BoostLearner:
         buffer_size = 0
         assert len(self.cache_) == 0, "can only call cache data once"
         for i in range(len(mats)):
-            duplicate = False
             for j in range(i):
                 if mats[i] == mats[j]:
-                    duplicate = True
-            if duplicate:
-                continue
+                    continue
             mats[i].cache_learner_ptr_ = self
             self.cache_.append(BoostLearner.CacheEntry(mats[i], buffer_size,
                                                        mats[i].info.num_row()))
             buffer_size += mats[i].info.num_row()
             num_feature = np.maximum(num_feature, mats[i].info.num_col())
         if num_feature > self.mparam.num_feature:
-            setattr(self, 'bst:numfeature', num_feature)
-        setattr(self, 'num_pbuffer', buffer_size)
+            self.set_param('bst:numfeature', num_feature)
+        self.set_param('num_pbuffer', buffer_size)
         if not self.silent:
             print(f'buffer_size = {buffer_size}')
 
     def set_param(self, name, val):
-        setattr(self, name, val)
+        if name[:4] != 'bst:':
+            name = 'bst:'+name
+
+        if name == 'silent':
+            self.silent = val
+        elif name == 'prob_buffer_row':
+            self.prob_buffer_row = val
+        elif name == 'eval_metric':
+            self.evaluator_.add_eval(val)
+        elif name == 'num_class':
+            self.num_output_group = val
+
+        if self.gbm_ is None:
+            if name == 'objective':
+                self.name_obj_ = val
+            elif name == 'booster':
+                self.name_gbm_ = val
+            self.mparam.set_param(name, val)
+        if self.gbm_ is not None:
+            self.gbm_.set_param(name, val)
+        if self.obj_ is not None:
+            self.obj_.set_param(name, val)
+        if self.gbm_ is None or self.obj_ is None:
+            self.cfg_.append((name, val))
 
     def init_model(self):
         self.init_obj_gbm()
@@ -145,7 +165,7 @@ class BoostLearner:
     def init_obj_gbm(self):
         if self.obj_ is not None:
             return
-        self.obj_ = SquareErrorLoss()
+        self.obj_ = LogisticNeglik()
         self.gbm_ = GBTree()
         for name, val in self.cfg_:
             self.obj_.set_param(name, val)
@@ -174,7 +194,12 @@ class BoostLearner:
             self.reserved = np.zeros(32)
 
         def set_param(self, name, val):
-            setattr(self, name, val)
+            if name == 'bst:num_feature':
+                self.num_feature = val
+            elif name == "num_class":
+                self.num_class = val
+            elif name == 'base_score':
+                self.base_score = val
 
     def find_buffer_offset(self, mat):
         for i in range(len(self.cache_)):

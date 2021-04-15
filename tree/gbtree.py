@@ -17,8 +17,8 @@ class GBTree:
         self.cfg = []
         self.mparam = self.ModelParam()
         self.tparam = self.TrainParam()
-        self.pred_buffer = np.empty(0)
-        self.pred_counter = np.empty(0)
+        self.pred_buffer = []
+        self.pred_counter = []
         self.updaters = []
         self.trees = []
         self.tree_info = []
@@ -29,13 +29,17 @@ class GBTree:
             self.cfg.append((name[4:], val))
             for i in range(len(self.updaters)):
                 self.updaters[i].set_param(name[4:], val)
+        if name == 'silent':
+            self.set_param('bst:silent', val)
         self.tparam.set_param(name, val)
         if len(self.trees) == 0:
+            print(name)
             self.mparam.set_param(name, val)
 
     def init_model(self):
         self.pred_buffer = []
         self.pred_counter = []
+        print('buffer', self.mparam.pred_buffer_size())
         resize(self.pred_buffer, self.mparam.pred_buffer_size())
         resize(self.pred_counter, self.mparam.pred_buffer_size())
 
@@ -56,7 +60,7 @@ class GBTree:
     def predict(self, p_fmat, buffer_offset, info, ntree_limit=0):
         """ TODO """
         nthread = 1
-        info = BoosterInfo()
+        # info = BoosterInfo()
         # p_fmat = FMatrixS()
 
         resize(self.thread_temp, nthread, RegTree.FVec())
@@ -79,7 +83,11 @@ class GBTree:
                 for gid in range(self.mparam.num_output_group):
                     buff = -1 if buffer_offset < 0 else buffer_offset + ridx
                     root_idx = info.get_root(ridx)
-                    self.pred(batch[i], buff, gid, root_idx, feats)
+                    self.pred(batch[i], buff, gid, root_idx, feats, stride, ntree_limit)
+
+    # inst, buffer_index, bst_group, root_index, p_feats,
+    # stride, ntree_limit
+
 
     def clear(self):
         self.trees.clear()
@@ -90,8 +98,7 @@ class GBTree:
         if self.tparam.updater_initialized != 0:
             return
         self.updaters = []
-        tval = self.tparam.updater_seq
-        pstr = tval.split(',')
+        pstr = self.tparam.updater_seq
         for pstr_i in pstr:
             if pstr_i == 'prune':
                 self.updaters.append(TreePruner())
@@ -162,18 +169,24 @@ class GBTree:
             for i in range(self.mparam.size_leaf_vector):
                 self.pred_buffer[bid + i + 1] = vec_psum[i]
 
+        # out =
+
         # out_pred[0] = psum
         # for i in range(self.mparam.size_leaf_vector):
 
     class TrainParam:
         def __init__(self):
             self.nthread = 0
-            self.updater_seq = "grow_colmaker,prune"
+            self.updater_seq = ['grow_colmaker','prune']
             self.num_parallel_tree = 1
             self.updater_initialized = 0
 
         def set_param(self, name, val):
-            setattr(self, name, val)
+            if name == 'updater' and val not in self.updater_seq:
+                self.updater_seq = [val]
+                self.updater_initialized = 0
+            elif name == 'num_parallel_tree':
+                self.num_parallel_tree = val
 
     class ModelParam:
         def __init__(self):
@@ -185,7 +198,16 @@ class GBTree:
             self.reserved = np.zeros(31)
 
         def set_param(self, name, val):
-            setattr(self, name, val)
+            if name == 'bst:num_pbuffer':
+                self.num_pbuffer = val
+            elif name == 'bst:num_output_group':
+                self.num_output_group = val
+            elif name == 'bst:num_roots':
+                self.num_roots = val
+            elif name == 'bst:num_feature':
+                self.num_feature = val
+            elif name == 'bst:size_leaf_vector':
+                self.size_leaf_vector = val
 
         def pred_buffer_size(self):
             """ size of needed preduction buffer """
