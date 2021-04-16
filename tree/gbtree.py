@@ -65,26 +65,33 @@ class GBTree:
 
         resize(self.thread_temp, nthread, RegTree.FVec())
         for i in range(nthread):
-            print('tato')
             self.thread_temp[i].init(self.mparam.num_feature)
-        stride = info.num_row * self.mparam.num_output_group
+
+        num_class = self.mparam.num_output_group
+        stride = info.num_row * num_class
+        out_pred = [0]*stride
         iter_i = p_fmat.row_iterator()
         iter_i.before_first()
         while iter_i.next():
             batch = iter_i.value()
             nsize = batch.size
             for i in range(nsize):
-                # TODO tid value
+                # tid is from omp_get_thread_num
                 tid = 0
-                feats = self.thread_temp[tid]
+                # feats is a reference to thread_temp[tid]
+                # feats = self.thread_temp[tid]
                 ridx = batch.base_rowid + i
                 print(ridx, batch.base_rowid + i)
                 # assert ridx < info.num_row, "data row index exceed bound"
                 for gid in range(self.mparam.num_output_group):
                     buff = -1 if buffer_offset < 0 else buffer_offset + ridx
                     root_idx = info.get_root(ridx)
-                    self.pred(batch[i], buff, gid, root_idx, feats, stride, ntree_limit)
+                    new_idx = ridx*num_class + gid
+                    out_pred[new_idx] = self.pred(batch[i], buff, gid, root_idx,
+                                                  self.thread_temp[tid],
+                                                  stride, ntree_limit)
 
+        return out_pred
     # inst, buffer_index, bst_group, root_index, p_feats,
     # stride, ntree_limit
 
@@ -137,8 +144,9 @@ class GBTree:
         """ make a prediction for a single instance """
         itop = 0
         psum = 0
-        p_feats = RegTree.FVec()
+        #  p_feats = RegTree.FVec()
         vec_psum = [0] * self.mparam.size_leaf_vector
+        # (buffer_offset+ridx) + num_pbuffer * id_group * (size_leaf_vector +1)
         bid = self.mparam.buffer_offset(buffer_index, bst_group)
         if ntree_limit == 0:
             treeleft = np.iinfo(np.uint32).max
@@ -168,8 +176,7 @@ class GBTree:
             self.pred_buffer[bid] = psum
             for i in range(self.mparam.size_leaf_vector):
                 self.pred_buffer[bid + i + 1] = vec_psum[i]
-
-        # out =
+        return psum
 
         # out_pred[0] = psum
         # for i in range(self.mparam.size_leaf_vector):

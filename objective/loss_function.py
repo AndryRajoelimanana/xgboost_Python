@@ -36,9 +36,10 @@ class RegLossObj(IObjFunction):
         if name == "scale_pos_weight":
             self.scale_pos_weight = value
 
-    def get_gradient(self, labels, preds, w):
-        nstep = labels.shape[0]
-        ndata = preds.shape[0]
+    def get_gradient(self, preds, info, it):
+        labels = info.labels
+        nstep = len(labels)
+        ndata = len(preds)
         assert nstep == ndata, 'labels are not correctly provided'
         return bst_gpair(self.gradient(labels, preds) * w,
                          self.hessian(labels, preds) * w)
