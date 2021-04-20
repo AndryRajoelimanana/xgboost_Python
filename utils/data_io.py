@@ -12,7 +12,7 @@ class SparseBatch:
             self.index = index
             self.fvalue = fvalue
 
-        def __cmp__(self, other):
+        def cmp_value(self, other):
             return self.fvalue < other.fvalue
 
     class Inst:

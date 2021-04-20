@@ -1,5 +1,5 @@
 import numpy as np
-from params import TrainParam, GradStats
+from params import TrainParam, GradStats, SplitEntry
 from utils.util import resize, sample_binary
 import pandas as pd
 from utils.simple_matrix import DMatrix
@@ -30,14 +30,14 @@ class ColMaker:
         def __init__(self, param):
             self.stats = GradStats(param)
             self.last_fvalue = None
-            self.best = None
+            self.best = SplitEntry()
 
     class NodeEntry:
         def __init__(self, param):
             self.stats = GradStats(param)
             self.root_gain = 0.0
             self.weight = 0.0
-            self.best = None
+            self.best = SplitEntry()
 
     class Builder:
         def __init__(self, param):
@@ -53,16 +53,34 @@ class ColMaker:
         def update(self, gpair, p_fmat, info, p_tree):
             self.init_data(gpair, p_fmat, info.root_index, p_tree)
             self.init_new_node(gpair, p_fmat, info, p_tree)
+            for depth in range(self.param.max_depth):
+                self.find_split(self.qexpand_, gpair, p_fmat, info, p_tree)
+                self.reset_position(self.qexpand_, p_fmat, p_tree)
+                self.update_queue_expand(p_tree)
+                self.init_new_node(gpair, p_fmat, info, p_tree)
+                if len(self.qexpand_) == 0:
+                    break
+            for i in range(len(self.qexpand_)):
+                nid = self.qexpand_[i]
+                p_tree[nid].set_leaf(self.snode[nid].weight *
+                                     self.param.learning_rate)
+            for nid in range(p_tree.param.num_nodes):
+                p_tree.stat(nid).loss_chg = self.snode[nid].best.loss_chg
+                p_tree.stat(nid).base_weight = self.snode[nid].weight
+                p_tree.stat(nid).sum_hess = self.snode[nid].stats.sum_hess
+                self.snode[nid].stats.set_leaf_vec(self.param,
+                                                   p_tree.leafvec(nid))
 
         def init_data(self, gpair, fmat, root_index, tree):
             assert tree.param.num_nodes == tree.param.num_roots, "Colmaker"
             rowset = fmat.buffered_rowset()
             self.position = self.setup_position(gpair, root_index, rowset)
-            self.feat_index = self.init(fmat)
+            self.feat_index = self.init_findex(fmat)
             stemp, snode = self.setup_stat_temp(self.nthread)
             self.stemp = stemp
             self.snode = snode
             self.qexpand_ = list(np.arange(tree.param.num_roots))
+            print('te')
 
         def init_new_node(self, gpair, fmat, info, tree):
             for i in range(len(self.stemp)):
@@ -74,13 +92,13 @@ class ColMaker:
             ndata = len(rowset)
             for i in range(ndata):
                 ridx = rowset[i]
-                tid = 1
+                tid = 0
                 if self.position[ridx] < 0:
                     continue
                 self.stemp[tid][self.position[ridx]].stats.add_stats(gpair, info,
                                                                      ridx)
-            for j in len(self.qexpand_):
-                nid = self.qexpand[j]
+            for j in range(len(self.qexpand_)):
+                nid = self.qexpand_[j]
                 stats = GradStats(self.param)
                 for tid in range(len(self.stemp)):
                     stats.add_pair(self.stemp[tid][nid].stats)
@@ -96,14 +114,19 @@ class ColMaker:
                 if not tree[nid].is_leaf():
                     newnodes.append(tree[nid].cleft())
                     newnodes.append(tree[nid].cright())
-            self.qexpand_ = np.array(newnodes)
+            self.qexpand_ = newnodes
 
         def enumerate_split(self, data, d_step, fid, gpair, info, temp):
             qexpand = self.qexpand_
             for j in range(len(qexpand)):
                 temp[qexpand[j]].stats.clear()
             c = GradStats(self.param)
-            for it in data:
+            if d_step == 1:
+                to_loop = np.arange(len(data))
+            elif d_step == -1:
+                to_loop = np.arange(len(data)-1, -1, -1)
+            for it_i in to_loop:
+                it = data[it_i]
                 ridx = it.index
                 nid = self.position[ridx]
                 if nid < 0:
@@ -111,7 +134,7 @@ class ColMaker:
                 fvalue = it.fvalue
                 e = temp[nid]
                 if e.stats.empty():
-                    e.stats.add(gpair, info, ridx)
+                    e.stats.add_stats(gpair, info, ridx)
                     e.last_fvalue = fvalue
                 else:
                     if np.abs(fvalue - e.last_fvalue) > rt_2eps and \
@@ -124,14 +147,14 @@ class ColMaker:
                             e.best.update(loss_chg, fid,
                                           (fvalue + e.last_fvalue)*0.5,
                                           d_step == -1)
-                    e.stats.add(gpair, info, ridx)
+                    e.stats.add_stats(gpair, info, ridx)
                     e.last_fvalue = fvalue
             for i in range(len(qexpand)):
                 nid = qexpand[i]
                 e = temp[nid]
                 c.set_substract(self.snode[nid].stats, e.stats)
-                if e.stats.sum_hess >= self.param.min_child_weight and \
-                    c.sum_hess >= self.param.min_child_weight:
+                if (e.stats.sum_hess >= self.param.min_child_weight) and \
+                        (c.sum_hess >= self.param.min_child_weight):
                     loss_chg = e.stats.calc_gain(self.param) + \
                                c.calc_gain(self.param) - \
                                self.snode[nid].root_gain
@@ -139,11 +162,12 @@ class ColMaker:
                     e.best.update(loss_chg, fid, e.last_fvalue + delta,
                                   d_step == -1)
 
-        def find_split(self, depth, qexpand, gpair, p_fmat, info, p_tree):
+        def find_split(self, qexpand, gpair, p_fmat, info, p_tree):
             feat_set = self.feat_index
-            if self.param.colsample_bylevel != 0:
+            if self.param.colsample_bylevel != 1:
                 np.random.shuffle(feat_set)
                 n = self.param.colsample_bylevel * len(feat_set)
+                assert n > 0, 'colsample_bylevel is too small'
                 resize(feat_set, n)
             iter_i = p_fmat.col_iterator(feat_set)
             while iter_i.next():
@@ -152,17 +176,24 @@ class ColMaker:
                 # batch_size = np.maximum(nsize/(32*self.nthread), 1)
                 for i in range(nsize):
                     fid = batch.col_index[i]
-                    tid = 1
+                    tid = 0
                     c = batch[i]
-                    self.enumerate_split(c.data[0:c.length], fid, gpair, info,
-                                         self.stemp[tid])
+                    if self.param.need_forward_search(
+                            p_fmat.get_col_density(fid)):
+                        self.enumerate_split(c.data[0:c.length], 1, fid, gpair,
+                                             info, self.stemp[tid])
+                    if self.param.need_backward_search(
+                            p_fmat.get_col_density(fid)):
+                        self.enumerate_split(c.data[0:c.length], -1, fid, gpair,
+                                             info, self.stemp[tid])
+
             for i in range(len(qexpand)):
                 nid = qexpand[i]
                 e = self.snode[nid]
                 for tid in range(self.nthread):
-                    e.best.update(self.stemp[tid][nid].best)
+                    e.best.update_e(self.stemp[tid][nid].best)
                 if e.best.loss_chg > rt_eps:
-                    p_tree.add_childs(nid)
+                    p_tree.add_child(nid)
                     p_tree[nid].set_split(e.best.split_index(),
                                           e.best.split_value,
                                           e.best.default_left())
@@ -234,7 +265,7 @@ class ColMaker:
             for i in range(ncol):
                 if fmat.get_col_size(i) != 0:
                     feat_index.append(i)
-            n = self.param.colsample_bytree * len(feat_index)
+            n = int(self.param.colsample_bytree * len(feat_index))
             np.random.shuffle(feat_index)
             return list(feat_index[:n])
 

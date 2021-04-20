@@ -1,6 +1,6 @@
 import numpy as np
 from utils.data_mat import bst_gpair
-from objective.loss_function import SquareErrorLoss, LogisticNeglik
+from objective.loss_function import SquareErrorLoss, LogisticNeglik, LinearSquare
 from tree.gbtree import GBTree
 from utils.simple_matrix import DMatrix
 import sys
@@ -69,11 +69,11 @@ class Booster:
             mats.append(dmats[i])
         return Booster_Learn(mats)
 
-    def booster_predict(self, data, output_margin, ntree_limit, length):
+    def booster_predict(self, data, output_margin, ntree_limit):
         """
         XGBoosterPredict xgboost_wrapper.cpp
         """
-        return self.handle.pred(data, output_margin, ntree_limit, length)
+        return self.handle.pred(data, output_margin, ntree_limit)
 
 
 class BoostLearner:
@@ -90,7 +90,7 @@ class BoostLearner:
         self.prob_buffer_row = 1.0
         self.cache_ = []
         self.mparam = BoostLearner.ModelParam()
-        self.preds_ = None
+        self.preds_ = []
         self.cfg_ = []
         self.evaluator_ = EvalSet()
 
@@ -114,8 +114,6 @@ class BoostLearner:
             print(f'buffer_size = {buffer_size}')
 
     def set_param(self, name, val):
-        if name[:4] != 'bst:':
-            name = 'bst:'+name
 
         if name == 'silent':
             self.silent = val
@@ -125,6 +123,9 @@ class BoostLearner:
             self.evaluator_.add_eval(val)
         elif name == 'num_class':
             self.num_output_group = val
+
+        if name[:4] != 'bst:':
+           name = 'bst:'+name
 
         if self.gbm_ is None:
             if name == 'objective':
@@ -149,23 +150,23 @@ class BoostLearner:
         p_train.fmat().init_col_access(self.prob_buffer_row)
 
     def update_one_iter(self, iters, train):
-        preds_ = self.predictraw(train)
-        gpair = self.obj_.get_gradient(preds_, train.info, iters)
+        self.preds_ = self.predictraw(train, self.preds_)
+        gpair = self.obj_.get_gradient(self.preds_, train.info, iters)
         self.gbm_.do_boost(train.fmat(), train.info.info, gpair)
 
     def eval_one_iter(self, iters, evals, evname):
         pass
 
-    def predict(self, data, output_margin, ntree_limit=0):
-        out_preds = self.predictraw(data, ntree_limit)
+    def predict(self, data, output_margin, out_preds, ntree_limit=0):
+        out_pred = self.predictraw(data, out_preds, ntree_limit)
         if not output_margin:
-            self.obj_.pred_transform(out_preds)
-        return out_preds
+            self.obj_.pred_transform(out_pred)
+        return out_pred
 
     def init_obj_gbm(self):
         if self.obj_ is not None:
             return
-        self.obj_ = LogisticNeglik()
+        self.obj_ = LinearSquare()
         self.gbm_ = GBTree()
         for name, val in self.cfg_:
             self.obj_.set_param(name, val)
@@ -173,9 +174,10 @@ class BoostLearner:
         if self.evaluator_.size == 0:
             self.evaluator_.add_eval(self.obj_.default_eval_metric())
 
-    def predictraw(self, data, ntree_limit=0):
-        preds = self.gbm_.predict(data.fmat(), self.find_buffer_offset(data),
-                                  data.info.info, ntree_limit)
+    def predictraw(self, data, out_pred, ntree_limit=0):
+        fmat = data.fmat()
+        preds = self.gbm_.predict(fmat, self.find_buffer_offset(data),
+                                  data.info.info, out_pred, ntree_limit)
         ndata = len(preds)
         if len(data.info.base_margin) != 0:
             assert ndata == len(data.info.base_margin), "base margin"
@@ -230,8 +232,8 @@ class Booster_Learn(BoostLearner):
 
     def pred(self, dmat, output_margin, ntree_limit):
         self.check_init_model()
-        self.predict(dmat, output_margin != 0, self.preds_, ntree_limit)
-        self.length = self.preds_.size()
+        self.preds_ = self.predict(dmat, output_margin != 0, ntree_limit)
+        self.length = len(self.preds_)
         return self.preds_
 
     def boost_one_iter(self, train, grad, hess, length):
@@ -269,11 +271,13 @@ if __name__ == '__main__':
     dmat = DMatrix(X, label=y)
     dmat.handle.fmat().init_col_access()
     bst = Booster(params={'bst:num_feature': 10, 'num_feature': 10,
-                          'max_depth': 2, 'eta': 1},
+                          'max_depth': 5, 'eta': 1, 'num_class': 1},
                   cache=[dmat])
 
     for it in range(3):
         bst.update(dmat, it)
+        print('k')
         # bb = BoostLearner()
         # bb.set_cache_data(mattt)
-        print('jj')
+    nn = bst.predict(dmat.handle, 0, 0)
+    print(nn)

@@ -14,9 +14,8 @@ class Sparse:
         self.indata = indata
 
     def get_col_density(self, i):
-        return 1 - (len(self.indices) - self.indptr[i + 1] + self.indptr[
-            i]) / len(
-            self.indices)
+        return 1 - (len(self.indices) - self.indptr[i + 1] +
+                    self.indptr[i]) / len(self.indices)
 
     def have_col_access(self):
         return self.indptr.shape[0] != 0

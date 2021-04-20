@@ -6,7 +6,7 @@ def resize(lst, num, default=0):
         while len(lst) > num:
             lst.pop()
     else:
-        for i in range(len(lst), num):
+        for i in range(len(lst), int(num)):
             lst.append(default)
 
 
@@ -15,6 +15,7 @@ def sample_binary(p):
 
 
 def sigmoid(x):
+    x = np.array(x)
     return 1.0/(1.0 + np.exp(-x))
 
 

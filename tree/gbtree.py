@@ -4,6 +4,7 @@ from updaters.colmaker import ColMaker
 from updaters.pruner import TreePruner
 from updaters.refresher import TreeRefresher
 from tree.tree import RegTree
+from utils.data_mat import bst_gpair
 from info_class import BoosterInfo
 from utils.simple_matrix import FMatrixS
 
@@ -39,25 +40,26 @@ class GBTree:
     def init_model(self):
         self.pred_buffer = []
         self.pred_counter = []
-        print('buffer', self.mparam.pred_buffer_size())
         resize(self.pred_buffer, self.mparam.pred_buffer_size())
         resize(self.pred_counter, self.mparam.pred_buffer_size())
+        assert self.mparam.num_trees == 0, "GBTree: model already initialized"
+        assert len(self.trees) == 0, "GBTree: model already initialized"
 
     def do_boost(self, p_fmat, info, gpair):
-        #
         if self.mparam.num_output_group == 1:
             self.boost_new_trees(gpair, p_fmat, info, 0)
         else:
             # ngroup = number of classes in label
             ngroup = self.mparam.num_output_group
             nsize = len(gpair) / ngroup
-            tmp = [None] * nsize
+            tmp = []
+            resize(tmp, nsize, bst_gpair())
             for gid in range(ngroup):
                 for i in range(nsize):
                     tmp[i] = gpair[i * ngroup + gid]
                 self.boost_new_trees(tmp, p_fmat, info, gid)
 
-    def predict(self, p_fmat, buffer_offset, info, ntree_limit=0):
+    def predict(self, p_fmat, buffer_offset, info, out_pred, ntree_limit=0):
         """ TODO """
         nthread = 1
         # info = BoosterInfo()
@@ -69,7 +71,8 @@ class GBTree:
 
         num_class = self.mparam.num_output_group
         stride = info.num_row * num_class
-        out_pred = [0]*stride
+        out_pred = []
+        resize(out_pred, stride * (self.mparam.size_leaf_vector + 1))
         iter_i = p_fmat.row_iterator()
         iter_i.before_first()
         while iter_i.next():
@@ -79,22 +82,19 @@ class GBTree:
                 # tid is from omp_get_thread_num
                 tid = 0
                 # feats is a reference to thread_temp[tid]
-                # feats = self.thread_temp[tid]
+                feats = self.thread_temp[tid]
                 ridx = batch.base_rowid + i
-                print(ridx, batch.base_rowid + i)
                 # assert ridx < info.num_row, "data row index exceed bound"
                 for gid in range(self.mparam.num_output_group):
                     buff = -1 if buffer_offset < 0 else buffer_offset + ridx
                     root_idx = info.get_root(ridx)
                     new_idx = ridx*num_class + gid
                     out_pred[new_idx] = self.pred(batch[i], buff, gid, root_idx,
-                                                  self.thread_temp[tid],
+                                                  feats, out_pred[new_idx],
                                                   stride, ntree_limit)
-
         return out_pred
     # inst, buffer_index, bst_group, root_index, p_feats,
     # stride, ntree_limit
-
 
     def clear(self):
         self.trees.clear()
@@ -139,7 +139,7 @@ class GBTree:
             self.tree_info.append(bst_group)
         self.mparam.num_trees += self.tparam.num_parallel_tree
 
-    def pred(self, inst, buffer_index, bst_group, root_index, p_feats,
+    def pred(self, inst, buffer_index, bst_group, root_index, p_feats, preds,
              stride, ntree_limit):
         """ make a prediction for a single instance """
         itop = 0
@@ -176,7 +176,12 @@ class GBTree:
             self.pred_buffer[bid] = psum
             for i in range(self.mparam.size_leaf_vector):
                 self.pred_buffer[bid + i + 1] = vec_psum[i]
+
         return psum
+        # preds[0] = psum
+        # for i in range(self.mparam.size_leaf_vector):
+        #    preds[stride * (i+1)] = vec_psum[i]
+        # return preds
 
         # out_pred[0] = psum
         # for i in range(self.mparam.size_leaf_vector):
@@ -184,7 +189,7 @@ class GBTree:
     class TrainParam:
         def __init__(self):
             self.nthread = 0
-            self.updater_seq = ['grow_colmaker','prune']
+            self.updater_seq = ['grow_colmaker']
             self.num_parallel_tree = 1
             self.updater_initialized = 0
 

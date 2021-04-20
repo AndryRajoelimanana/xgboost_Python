@@ -5,11 +5,11 @@ class BoosterInfo:
     def __init__(self, num_row=0, num_col=0):
         self.num_row = num_row
         self.num_col = num_col
-        self.root_index = np.empty(0)
-        self.fold_index = np.empty(0)
+        self.root_index = []
+        self.fold_index = []
 
     def get_root(self, i):
-        if self.root_index.size == 0:
+        if len(self.root_index) == 0:
             return 0
         else:
             return self.root_index[i]

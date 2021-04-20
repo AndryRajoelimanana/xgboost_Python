@@ -40,9 +40,18 @@ class RegLossObj(IObjFunction):
         labels = info.labels
         nstep = len(labels)
         ndata = len(preds)
-        assert nstep == ndata, 'labels are not correctly provided'
-        return bst_gpair(self.gradient(labels, preds) * w,
-                         self.hessian(labels, preds) * w)
+        assert ndata % nstep == 0, 'labels are not correctly provided'
+        gpair = []
+        for i in range(ndata):
+            j = i % nstep
+            p = self.pred_transform(preds[i])
+            w = info.get_weight(j)
+            label = info.labels[j]
+            if label == 1:
+                w *= self.scale_pos_weight
+            gpair.append(bst_gpair(self.gradient(label, p) * w,
+                         self.hessian(label, p) * w))
+        return gpair
 
     def gradient(self, y, ypred):
         pass
@@ -68,9 +77,6 @@ class LinearSquare(RegLossObj):
         return np.ones_like(y)
 
     def prob_to_margin(self, base_score):
-        assert np.min(base_score) >= 0 and np.max(base_score) <= 1, \
-            'base score should be in (0,1)'
-        base_score = -np.log(1/(base_score - 1))
         return base_score
 
 

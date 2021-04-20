@@ -29,7 +29,43 @@ class TrainParam:
         self.min_split_loss = 0
 
     def set_param(self, name, value):
-        setattr(self, name, value)
+        if name == 'gamma':
+            self.min_split_loss = value
+        elif name == 'eta':
+            self.learning_rate = value
+        elif name == 'lambda':
+            self.reg_lambda = value
+        elif name == 'learning_rate':
+            self.learning_rate = value
+        elif name == 'min_child_weight':
+            self.min_child_weight = value
+        elif name == 'min_split_loss':
+            self.min_split_loss = value
+        elif name == 'reg_lambda':
+            self.reg_lambda = value
+        elif name == 'reg_alpha':
+            self.reg_alpha = value
+        elif name == 'subsample':
+            self.subsample = value
+        elif name == 'colsample_bylevel':
+            self.colsample_bylevel = value
+        elif name == 'colsample_bytree':
+            self.colsample_bytree = value
+        elif name == 'opt_dense_col':
+            self.opt_dense_col = value
+        elif name == 'size_leaf_vector':
+            self.size_leaf_vector = value
+        elif name == 'max_depth':
+            self.max_depth = value
+        elif name == 'nthread':
+            self.nthread = value
+        elif name == 'default_direction':
+            if value == 'learn':
+                self.default_direction = 0
+            elif value == 'left':
+                self.default_direction = 1
+            elif value == 'right':
+                self.default_direction = 2
 
     def calc_gain(self, sum_grad, sum_hess):
         if sum_hess < self.min_child_weight:
@@ -39,6 +75,13 @@ class TrainParam:
         else:
             return (thresholdL1(sum_grad, self.reg_alpha))**2 / (sum_hess +
                                                                  self.reg_lambda)
+
+    def need_forward_search(self, col_density = 0.0):
+        return (self.default_direction == 2) or ((self.default_direction == 0)
+                                                 and (col_density < self.opt_dense_col))
+
+    def need_backward_search(self, col_density=0.0):
+        return self.default_direction != 2
 
     def calc_gain_cost(self, sum_grad, sum_hess, test_grad, test_hess):
         w = self.calc_weight(sum_grad, sum_hess)
@@ -73,6 +116,10 @@ class GradStats:
             self.param = TrainParam()
         self.sum_grad = self.sum_hess = 0
 
+    def clear(self):
+        self.sum_grad = 0
+        self.sum_hess = 0
+
     @staticmethod
     def check_info(info):
         pass
@@ -83,7 +130,7 @@ class GradStats:
 
     def add_stats(self, gpair, info, ridx):
         b = gpair[ridx]
-        self.add_pair(b)
+        self.add(b.grad, b.hess)
 
     def add_pair(self, b):
         self.add(b.sum_grad, b.sum_hess)
@@ -97,6 +144,9 @@ class GradStats:
     def set_substract(self, a, b):
         self.sum_grad = a.sum_grad - b.sum_grad
         self.sum_hess = a.sum_hess - b.sum_hess
+
+    def set_leaf_vec(self, param, vec):
+        pass
 
     def empty(self):
         return self.sum_hess == 0
@@ -117,7 +167,7 @@ class SplitEntry:
         else:
             return not (self.loss_chg > new_loss_change)
 
-    def update(self, e):
+    def update_e(self, e):
         if self.need_replace(e.loss_chg, e.split_index()):
             self.loss_chg = e.loss_chg
             self.sindex = e.sindex

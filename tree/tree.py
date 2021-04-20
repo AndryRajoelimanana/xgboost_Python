@@ -1,32 +1,35 @@
 import numpy as np
 # tree/model.h
+from utils.util import resize
 
 
 class TreeModel:
     def __init__(self):
         self.param = self.Param()
-        self.nodes = [self.Node()]
-        self.deleted_nodes = None
-
         self.param.num_nodes = 1
         self.param.num_roots = 1
         self.param.num_deleted = 0
+        self.nodes = [self.Node()]
+
+        self.deleted_nodes = []
+        self.stats = []
+        self.leaf_vector = []
 
         self.node_stat = None
-        self.split_cond = None
-        self.stats = []
-        self.leaf_vector = None
+        # self.split_cond = None
 
     def alloc_node(self):
         if self.param.num_deleted != 0:
             nd = self.deleted_nodes.pop()
             self.param.num_deleted -= 1
             return nd
-        self.param.num_nodes += 1
+
         nd = self.param.num_nodes
-        self.nodes.append(self.Node())
-        self.stats.append(RTreeNodeStat())
-        self.leaf_vector.extend([0] * nd * self.param.size_leaf_vector)
+        self.param.num_nodes += 1
+        resize(self.nodes, self.param.num_nodes, self.Node())
+        resize(self.stats, self.param.num_nodes, RTreeNodeStat())
+        resize(self.leaf_vector, self.param.num_nodes *
+               self.param.size_leaf_vector)
         return nd
 
     def delete_node(self, nid):
@@ -59,16 +62,16 @@ class TreeModel:
         return self.stats[i]
 
     def leafvec(self, i):
-        if self.leaf_vector() == 0:
+        if len(self.leaf_vector) == 0:
             return None
         return self.leaf_vector[i * self.param.size_leaf_vector]
 
     def init_model(self):
         n_node = self.param.num_roots
         self.param.num_nodes = n_node
-        self.nodes = [self.Node()]*n_node
-        self.stats = [RTreeNodeStat()]*n_node
-        self.leaf_vector = [0.0]*n_node * self.param.size_leaf_vector
+        resize(self.nodes, n_node, self.Node())
+        resize(self.stats, n_node, RTreeNodeStat())
+        resize(self.leaf_vector, n_node * self.param.size_leaf_vector)
         for i in range(n_node):
             self.nodes[i].set_leaf(0.0)
             self.nodes[i].set_parent(-1)
@@ -78,13 +81,13 @@ class TreeModel:
         pright = self.alloc_node()
         self.nodes[nid].cleft_ = pleft
         self.nodes[nid].cright_ = pright
-        self.nodes[pleft].set_parent(nid, True)
-        self.nodes[pright].set_parent(nid, False)
+        self.nodes[self.nodes[nid].cleft()].set_parent(nid, True)
+        self.nodes[self.nodes[nid].cright()].set_parent(nid, False)
 
     def add_right_child(self, nid):
         pright = self.alloc_node()
         self.nodes[nid].right = pright
-        self.nodes[nid].set_parent(nid, False)
+        self.nodes[self.nodes[nid].right].set_parent(nid, False)
 
     def get_depth(self, nid, pass_rchild=False):
         depth = 0
@@ -118,9 +121,7 @@ class TreeModel:
         def __init__(self):
             self.parent_ = None
             self.cleft_ = self.cright_ = None
-            self.sindex_ = self.split_cond = None
-            self.right = None
-            self.leaf_value = None
+            self.sindex_ = None
             self.info_ = {'leaf_value': None, 'split_cond': None}
 
         def cleft(self):
@@ -203,7 +204,9 @@ class TreeModel:
         def __init__(self):
             self.max_depth = 0
             self.size_leaf_vector = 0
-            self.num_roots = self.num_nodes = self.num_deleted = None
+            self.num_roots = 1
+            self.num_nodes = 0
+            self.num_deleted = 0
             self.num_feature = None
 
         def set_param(self, name, val):
@@ -231,7 +234,7 @@ class RTreeNodeStat:
 
 class RegTree(TreeModel):
     def __init__(self):
-        super(RegTree, self).__init__()
+        super().__init__()
 
     def get_leaf_index(self, feat, root_id=0):
         pid = root_id
@@ -258,25 +261,26 @@ class RegTree(TreeModel):
 
     class FVec:
         def __init__(self):
-            self.fvalue = None
-            self.flag = None
-            self.data = None
+            # self.fvalue = None
+            # self.flag = None
+            self.data = []
 
         class Entry:
             fvalue = None
             flag = 0
 
         def init(self, size):
-            e = self.Entry()
-            e.flag = -1
-            self.data = [e.flag]*size
+            self.data = []
+            for i in range(size):
+                self.data.append(self.Entry())
+                setattr(self.data[-1], 'flag', -1)
 
         def fill(self, inst):
-            for i in range(len(inst)):
+            for i in range(inst.length):
                 self.data[inst[i].index].fvalue = inst[i].fvalue
 
         def drop(self, inst):
-            for i in range(len(inst)):
+            for i in range(inst.length):
                 self.data[inst[i].index].flag = -1
 
         def fvalue(self, i):
@@ -284,3 +288,5 @@ class RegTree(TreeModel):
 
         def is_missing(self, i):
             return self.data[i].flag == -1
+
+
