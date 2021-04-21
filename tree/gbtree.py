@@ -4,9 +4,7 @@ from updaters.colmaker import ColMaker
 from updaters.pruner import TreePruner
 from updaters.refresher import TreeRefresher
 from tree.tree import RegTree
-from utils.data_mat import bst_gpair
-from info_class import BoosterInfo
-from utils.simple_matrix import FMatrixS
+from data.data_mat import bst_gpair
 
 
 class GBTree:

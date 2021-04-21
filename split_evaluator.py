@@ -72,7 +72,7 @@ class SplitEvaluation:
         size = 0
         # start update sketch
         wsum = 0
-        # construct data with unique weights
+        # construct data with unique weights_
       #   for i in range(n):
       #       j = i + 1
       #       w = weight_s[i];

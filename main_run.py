@@ -1,6 +1,6 @@
 from Booster import BoostLearner
 from sklearn import datasets
-from utils.simple_matrix import DMatrixSimple, DMatrix
+from data.simple_matrix import DMatrix
 
 
 class BoostLearnTask:

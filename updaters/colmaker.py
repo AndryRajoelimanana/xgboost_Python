@@ -1,8 +1,7 @@
 import numpy as np
 from params import TrainParam, GradStats, SplitEntry
 from utils.util import resize, sample_binary
-import pandas as pd
-from utils.simple_matrix import DMatrix
+from data.simple_matrix import DMatrix
 from sklearn import datasets
 
 
@@ -112,8 +111,8 @@ class ColMaker:
             for i in range(len(qexpand)):
                 nid = qexpand[i]
                 if not tree[nid].is_leaf():
-                    newnodes.append(tree[nid].cleft())
-                    newnodes.append(tree[nid].cright())
+                    newnodes.append(tree[nid].left_child())
+                    newnodes.append(tree[nid].right_child())
             self.qexpand_ = newnodes
 
         def enumerate_split(self, data, d_step, fid, gpair, info, temp):
@@ -210,8 +209,8 @@ class ColMaker:
                     if tree[nid].is_leaf():
                         self.position[ridx] = -1
                     else:
-                        new_pos = tree[nid].cleft() if tree[nid].cleft() \
-                            else tree[nid].cright()
+                        new_pos = tree[nid].left_child() if tree[nid].left_child() \
+                            else tree[nid].right_child()
                         self.position[ridx] = new_pos
             fsplits = []
             for i in range(len(qexpand)):
@@ -234,9 +233,9 @@ class ColMaker:
                         nid = tree[nid].parent()
                         if tree[nid].split_index() == fid:
                             if fvalue < tree[nid].split_cond():
-                                self.position[ridx] = tree[nid].cleft()
+                                self.position[ridx] = tree[nid].left_child()
                             else:
-                                self.position[ridx] = tree[nid].cright()
+                                self.position[ridx] = tree[nid].right_child()
 
         def setup_position(self, gpair, root_index, rowset):
             position = [0]*len(gpair)

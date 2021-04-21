@@ -1,5 +1,5 @@
 import numpy as np
-from utils.data_mat import bst_gpair
+from data.data_mat import bst_gpair
 from utils.util import sigmoid, softmax, one_hot_encoding
 
 

@@ -1,8 +1,8 @@
 import numpy as np
-from utils.data_mat import bst_gpair
-from objective.loss_function import SquareErrorLoss, LogisticNeglik, LinearSquare
+from data.data_mat import bst_gpair
+from objective.loss_function import LinearSquare
 from tree.gbtree import GBTree
-from utils.simple_matrix import DMatrix
+from data.simple_matrix import DMatrix
 import sys
 from sklearn import datasets
 from objective.evaluation import EvalSet

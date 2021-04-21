@@ -117,17 +117,76 @@ class TreeModel:
         param = self.param
         return param.num_nodes - param.num_roots - param.num_deleted
 
+
+
+class TreeParam:
+    def __init__(self):
+        self.max_depth = 0
+        self.size_leaf_vector = 0
+        self.num_roots = 1
+        self.num_nodes = 1
+        self.num_deleted = 0
+        self.num_feature = None
+
+    def set_param(self, name, val):
+        if name == 'num_roots':
+            self.num_roots = val
+        elif name == 'num_feature':
+            self.num_feature = val
+        elif name == 'size_leaf_vector':
+            self.size_leaf_vector = val
+
+    def __eq__(self, b):
+        return (self.num_nodes == b.num_nodes) and (
+                self.num_deleted == b.num_deleted) and (
+                       self.num_feature == b.num_feature) and (
+                       self.size_leaf_vector == b.size_leaf_vector)
+
+
+class RTreeNodeStat:
+    def __init__(self, loss_chg=None, sum_hess=None, weight=None):
+        self.loss_chg = loss_chg
+        self.sum_hess = sum_hess
+        self.base_weight = weight
+        self.leaf_child_cnt = 0
+
+    def print(self, is_leaf):
+        if is_leaf:
+            print(f'gain = {self.loss_chg} ,cover = {self.sum_hess}')
+        else:
+            print(f'cover= {self.sum_hess}')
+
+    def __eq__(self, b):
+        return self.loss_chg == b.loss_chg and self.sum_hess == b.sum_hess and \
+               self.base_weight == b.base_weight and \
+               self.leaf_child_cnt == b.leaf_child_cnt
+
+
+class RegTree(TreeModel):
+    kInvalidNodeId = -1
+    kDeletedNodeMarker = np.iinfo(np.uint32).max
+    kRoot = 0
+
+    def __init__(self):
+        super().__init__()
+
     class Node:
-        def __init__(self):
-            self.parent_ = None
-            self.cleft_ = self.cright_ = None
+        def __init__(self, cleft=None, cright=None, parent=None,
+                     split_ind=None, split_cond=None,
+                     default_left=True):
+            self.parent_ = parent
+            self.cleft_ = cleft
+            self.cright_ = cright
+            self.set_parent(self.parent_)
+            self.set_split(split_ind, split_cond, default_left)
+
             self.sindex_ = None
             self.info_ = {'leaf_value': None, 'split_cond': None}
 
-        def cleft(self):
+        def left_child(self):
             return self.cleft_
 
-        def cright(self):
+        def right_child(self):
             return self.cright_
 
         def cdefault(self):
@@ -143,7 +202,7 @@ class TreeModel:
             return (self.sindex_ >> 31) != 0
 
         def is_leaf(self):
-            return self.cleft_ == -1
+            return self.cleft_ == self.k
 
         def leaf_value(self):
             return self.info_['leaf_value']
@@ -200,41 +259,8 @@ class TreeModel:
                     self.sindex_ == other.sindex_ and
                     self.leaf_value == other.leaf_value)
 
-    class Param:
-        def __init__(self):
-            self.max_depth = 0
-            self.size_leaf_vector = 0
-            self.num_roots = 1
-            self.num_nodes = 0
-            self.num_deleted = 0
-            self.num_feature = None
-
-        def set_param(self, name, val):
-            if name == 'num_roots':
-                self.num_roots = val
-            elif name == 'num_feature':
-                self.num_feature = val
-            elif name == 'size_leaf_vector':
-                self.size_leaf_vector = val
 
 
-class RTreeNodeStat:
-    def __init__(self):
-        self.loss_chg = None
-        self.sum_hess = None
-        self.base_weight = None
-        self.leaf_child_cnt = None
-
-    def print(self, is_leaf):
-        if is_leaf:
-            print(f'gain = {self.loss_chg} ,cover = {self.sum_hess}')
-        else:
-            print(f'cover= {self.sum_hess}')
-
-
-class RegTree(TreeModel):
-    def __init__(self):
-        super().__init__()
 
     def get_leaf_index(self, feat, root_id=0):
         pid = root_id
@@ -288,5 +314,3 @@ class RegTree(TreeModel):
 
         def is_missing(self, i):
             return self.data[i].flag == -1
-
-
