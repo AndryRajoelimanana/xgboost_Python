@@ -108,12 +108,12 @@ class FMatrixS(IFMatrix):
                     inst = batch[i]
                     for j in range(inst.length):
                         new_entry = SparseBatch.Entry(batch.base_rowid + i,
-                                                      inst[j].fvalue)
+                                                      inst[j].get_fvalue)
                         builder.push_elem(inst[j].index, new_entry)
         ncol = self.num_col()
         for i in range(ncol):
             unsorted = self.col_data_[self.col_ptr_[i]:self.col_ptr_[i + 1]]
-            unsorted.sort(key=lambda x: x.fvalue)
+            unsorted.sort(key=lambda x: x.get_fvalue)
 
     class OneBatchIter(IIterator):
         def __init__(self):

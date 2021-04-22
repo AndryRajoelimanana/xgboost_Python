@@ -1,8 +1,8 @@
 import numpy as np
-from data.data_mat import bst_gpair
+from data_i.data_mat import bst_gpair
 from objective.loss_function import LinearSquare
 from tree.gbtree import GBTree
-from data.simple_matrix import DMatrix
+from data_i.simple_matrix import DMatrix
 import sys
 from sklearn import datasets
 from objective.evaluation import EvalSet
@@ -97,7 +97,7 @@ class BoostLearner:
     def set_cache_data(self, mats):
         num_feature = 0
         buffer_size = 0
-        assert len(self.cache_) == 0, "can only call cache data once"
+        assert len(self.cache_) == 0, "can only call cache data_ once"
         for i in range(len(mats)):
             for j in range(i):
                 if mats[i] == mats[j]:

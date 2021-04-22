@@ -66,9 +66,9 @@ class ColMaker:
             for nid in range(p_tree.param.num_nodes):
                 p_tree.stat(nid).loss_chg = self.snode[nid].best.loss_chg
                 p_tree.stat(nid).base_weight = self.snode[nid].weight
-                p_tree.stat(nid).sum_hess = self.snode[nid].stats.sum_hess
-                self.snode[nid].stats.set_leaf_vec(self.param,
-                                                   p_tree.leafvec(nid))
+                p_tree.stat(nid).sum_hess = self.snode[nid].stats_.sum_hess
+                self.snode[nid].stats_.set_leaf_vec(self.param,
+                                                    p_tree.leafvec(nid))
 
         def init_data(self, gpair, fmat, root_index, tree):
             assert tree.param.num_nodes == tree.param.num_roots, "Colmaker"
@@ -94,13 +94,13 @@ class ColMaker:
                 tid = 0
                 if self.position[ridx] < 0:
                     continue
-                self.stemp[tid][self.position[ridx]].stats.add_stats(gpair, info,
-                                                                     ridx)
+                self.stemp[tid][self.position[ridx]].stats_.add_stats(gpair, info,
+                                                                      ridx)
             for j in range(len(self.qexpand_)):
                 nid = self.qexpand_[j]
                 stats = GradStats(self.param)
                 for tid in range(len(self.stemp)):
-                    stats.add_pair(self.stemp[tid][nid].stats)
+                    stats.add_pair(self.stemp[tid][nid].stats_)
                 self.snode[nid].stats = stats
                 self.snode[nid].root_gain = stats.calc_gain(self.param)
                 self.snode[nid].weight = stats.calc_weight(self.param)
@@ -118,7 +118,7 @@ class ColMaker:
         def enumerate_split(self, data, d_step, fid, gpair, info, temp):
             qexpand = self.qexpand_
             for j in range(len(qexpand)):
-                temp[qexpand[j]].stats.clear()
+                temp[qexpand[j]].stats_.clear()
             c = GradStats(self.param)
             if d_step == 1:
                 to_loop = np.arange(len(data))
@@ -130,31 +130,31 @@ class ColMaker:
                 nid = self.position[ridx]
                 if nid < 0:
                     continue
-                fvalue = it.fvalue
+                fvalue = it.get_fvalue
                 e = temp[nid]
-                if e.stats.empty():
-                    e.stats.add_stats(gpair, info, ridx)
+                if e.stats_.empty():
+                    e.stats_.add_stats(gpair, info, ridx)
                     e.last_fvalue = fvalue
                 else:
                     if np.abs(fvalue - e.last_fvalue) > rt_2eps and \
-                            e.stats.sum_hess >= self.param.min_child_weight:
-                        c.set_substract(self.snode[nid].stats, e.stats)
+                            e.stats_.sum_hess >= self.param.min_child_weight:
+                        c.set_substract(self.snode[nid].stats, e.stats_)
                         if c.sum_hess >= self.param.min_child_weight:
-                            loss_chg = e.stats.calc_gain(self.param) + \
+                            loss_chg = e.stats_.calc_gain(self.param) + \
                                        c.calc_gain(self.param) - \
                                        self.snode[nid].root_gain
                             e.best.update(loss_chg, fid,
                                           (fvalue + e.last_fvalue)*0.5,
                                           d_step == -1)
-                    e.stats.add_stats(gpair, info, ridx)
+                    e.stats_.add_stats(gpair, info, ridx)
                     e.last_fvalue = fvalue
             for i in range(len(qexpand)):
                 nid = qexpand[i]
                 e = temp[nid]
-                c.set_substract(self.snode[nid].stats, e.stats)
-                if (e.stats.sum_hess >= self.param.min_child_weight) and \
+                c.set_substract(self.snode[nid].stats, e.stats_)
+                if (e.stats_.sum_hess >= self.param.min_child_weight) and \
                         (c.sum_hess >= self.param.min_child_weight):
-                    loss_chg = e.stats.calc_gain(self.param) + \
+                    loss_chg = e.stats_.calc_gain(self.param) + \
                                c.calc_gain(self.param) - \
                                self.snode[nid].root_gain
                     delta = rt_eps if d_step == 1 else -rt_eps
@@ -179,11 +179,11 @@ class ColMaker:
                     c = batch[i]
                     if self.param.need_forward_search(
                             p_fmat.get_col_density(fid)):
-                        self.enumerate_split(c.data[0:c.length], 1, fid, gpair,
+                        self.enumerate_split(c.data_[0:c.length], 1, fid, gpair,
                                              info, self.stemp[tid])
                     if self.param.need_backward_search(
                             p_fmat.get_col_density(fid)):
-                        self.enumerate_split(c.data[0:c.length], -1, fid, gpair,
+                        self.enumerate_split(c.data_[0:c.length], -1, fid, gpair,
                                              info, self.stemp[tid])
 
             for i in range(len(qexpand)):
@@ -227,7 +227,7 @@ class ColMaker:
                     ndata = col.length
                     for j in range(ndata):
                         ridx = col[j].index
-                        fvalue = col[j].fvalue
+                        fvalue = col[j].get_fvalue
                         nid = self.position[ridx]
                         if nid == -1: continue
                         nid = tree[nid].parent()
@@ -282,8 +282,8 @@ class ColMaker:
 
 
 if __name__ == "__main__":
-    # data = pd.read_csv('~/projects/Learning/OCR_text/opencv-text-detection'
-    #                   '/Python_script/data/covid.csv')
+    # data_ = pd.read_csv('~/projects/Learning/OCR_text/opencv-text-detection'
+    #                   '/Python_script/data_/covid.csv')
     diabetes = datasets.load_diabetes()
     X, y = diabetes.data, diabetes.target
     dmat = DMatrix(X, label=y)
@@ -307,11 +307,11 @@ if __name__ == "__main__":
 #
 # class Inst:
 #     def __init__(self, entries, length):
-#         self.data = entries
+#         self.data_ = entries
 #         self.length = length
 #
 #     def __getitem__(self, item):
-#         return self.data[item]
+#         return self.data_[item]
 #
 #
 

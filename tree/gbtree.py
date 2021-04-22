@@ -82,7 +82,7 @@ class GBTree:
                 # feats is a reference to thread_temp[tid]
                 feats = self.thread_temp[tid]
                 ridx = batch.base_rowid + i
-                # assert ridx < info.num_row, "data row index exceed bound"
+                # assert ridx < info.num_row, "data_ row index exceed bound"
                 for gid in range(self.mparam.num_output_group):
                     buff = -1 if buffer_offset < 0 else buffer_offset + ridx
                     root_idx = info.get_root(ridx)

@@ -72,18 +72,18 @@ class SplitEvaluation:
         size = 0
         # start update sketch
         wsum = 0
-        # construct data with unique weights_
+        # construct data_ with unique weights_
       #   for i in range(n):
       #       j = i + 1
       #       w = weight_s[i];
-      #       while j < n and data[j] == data[i]:
+      #       while j < n and data_[j] == data_[i]:
       #           w += weight_s[j].weight
       #           j+=1
       #       .append()
       #       wsum += w
       #       i = j
       #
-      #   out->data[out->size++] = Entry(wsum, wsum + w, w, queue[i].value);
+      #   out->data_[out->size++] = Entry(wsum, wsum + w, w, queue[i].value);
       #   wsum += w; i = j;
       # }
 

@@ -1,10 +1,16 @@
 import numpy as np
 from utils.util import resize
+from enum import Enum
 
-
-# src/data/data.c
+# src/data_/data_.c
 
 # namespace: xgboost
+
+
+class FeatureType(Enum):
+    kNumerical = 0
+    kCategorical = 1
+
 
 class MetaInfo:
     kNumField = 11
@@ -58,10 +64,10 @@ class Entry:
 
     @staticmethod
     def cmp_value(a, b):
-        return a.fvalue < b.fvalue
+        return a.get_fvalue < b.get_fvalue
 
     def __eq__(self, other):
-        return (self.index == other.index) and (self.fvalue == other.fvalue)
+        return (self.index == other.index) and (self.fvalue == other.get_fvalue)
 
 
 class BatchParam:
@@ -80,5 +86,5 @@ class HostSparsePageView:
     def __init__(self):
         self.offset = None
         self.data = None
-    def __getitem__(self, item):
-        size = self.offset.data() + i + 1
+    # def __getitem__(self, item):
+    #    size = self.offset.data_() + i + 1

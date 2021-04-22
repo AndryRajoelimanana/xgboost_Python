@@ -1,5 +1,5 @@
 # from utils.data_mat import D
-# begin data.h
+# begin data_.h
 
 
 class SparseBatch:
@@ -13,7 +13,7 @@ class SparseBatch:
             self.fvalue = fvalue
 
         def cmp_value(self, other):
-            return self.fvalue < other.fvalue
+            return self.fvalue < other.get_fvalue
 
     class Inst:
         def __init__(self, data, length):
