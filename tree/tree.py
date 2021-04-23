@@ -316,10 +316,15 @@ class RegTree(TreeModel):
     def stat(self, i):
         return self.stats_[i]
 
+    def counter
+
     def get_num_split_nodes(self):
         splits = 0
-        self.walk_tree([splits, self](nids))
-
+        def spl(nidx):
+            if not self[nidx].is_leaf():
+                splits += 1
+            return True
+        self.walk_tree(spl)
 
     def expandnode(self, nid, split_index, split_value, default_left,
                    base_weight, left_leaf_weight, right_leaf_weight,
