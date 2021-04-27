@@ -69,13 +69,13 @@ class EvalEWiseBase(IEvaluator):
         pass
 
     def eval(self, preds, info):
-        ndata = len(info.labels)
-        assert len(preds) % ndata == 0, "preds and labels # size"
+        ndata = len(info.labels_)
+        assert len(preds) % ndata == 0, "preds and labels_ # size"
         e_sum = 0
         wsum = 0
         for i in range(ndata):
             wt = info.get_weight(i)
-            e_sum += self.eval_row(info.labels[i], preds[i]) * wt
+            e_sum += self.eval_row(info.labels_[i], preds[i]) * wt
             wsum += wt
         return self.get_final(e_sum, wsum)
 
@@ -149,8 +149,8 @@ class EvalCTest(IEvaluator):
         return str(self.name_)
 
     def eval(self, preds, info):
-        ngroup = len(preds) / len(info.labels) - 1
-        ndata = len(info.labels)
+        ngroup = len(preds) / len(info.labels_) - 1
+        ndata = len(info.labels_)
         wsum = 0
         tpred = []
         tinfo = MetaInfo()

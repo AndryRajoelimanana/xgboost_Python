@@ -37,16 +37,16 @@ class RegLossObj(IObjFunction):
             self.scale_pos_weight = value
 
     def get_gradient(self, preds, info, it):
-        labels = info.labels
+        labels = info.labels_
         nstep = len(labels)
         ndata = len(preds)
-        assert ndata % nstep == 0, 'labels are not correctly provided'
+        assert ndata % nstep == 0, 'labels_ are not correctly provided'
         gpair = []
         for i in range(ndata):
             j = i % nstep
             p = self.pred_transform(preds[i])
             w = info.get_weight(j)
-            label = info.labels[j]
+            label = info.labels_[j]
             if label == 1:
                 w *= self.scale_pos_weight
             gpair.append(bst_gpair(self.gradient(label, p) * w,
@@ -112,7 +112,7 @@ class SoftmaxMultiClassObj(IObjFunction):
             self.nclass = value
 
     def get_gradient(self, y, y_pred, w):
-        # labels, preds, w
+        # labels_, preds, w
         assert self.nclass > 0, 'must set n_class'
         probas = softmax(y_pred)
         eps = 1e-16

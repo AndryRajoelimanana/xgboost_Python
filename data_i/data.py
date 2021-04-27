@@ -2,6 +2,7 @@ import numpy as np
 from utils.util import resize
 from enum import Enum
 
+
 # src/data_/data_.c
 
 # namespace: xgboost
@@ -12,18 +13,54 @@ class FeatureType(Enum):
     kCategorical = 1
 
 
+class DataType(Enum):
+    kFloat32 = 1
+    kDouble = 2
+    kUInt32 = 3
+    kUInt64 = 4
+    kStr = 5
+
+
+class BoosterInfo:
+    def __init__(self, num_row=0, num_col=0):
+        self.num_row = num_row
+        self.num_col = num_col
+        self.root_index = []
+        self.fold_index = []
+
+    def get_root(self, i):
+        if len(self.root_index) == 0:
+            return 0
+        else:
+            return self.root_index[i]
+
+
 class MetaInfo:
     kNumField = 11
 
-    def __init__(self):
-        self.num_row_ = self.num_col_ = self.num_nonzero_ = 0
-        self.labels_ = []
-        self.root_index_ = []
-        self.group_ptr_ = []
-        self.weights_ = []
-        self.base_margin_ = []
-        self.labels_lower_bound_ = []
-        self.labels_upper_bound_ = []
+    def __init__(self, num_row=0, num_col=0):
+        self.info = BoosterInfo()
+        self.num_row_ = num_row
+        self.num_col_ = num_col
+        self.num_nonzero_ = 0
+        self.labels_ = self.group_ptr_ = self.weights_ = self.base_margin_ = []
+        self.labels_lower_bound_ = self.labels_upper_bound_ = []
+        self.feature_type_names = self.feature_names = self.feature_types = []
+        self.feature_weigths = self.label_order_cache_ = []
+        self.clear()
+
+    def num_row(self):
+        return self.info.num_row
+
+    def num_col(self):
+        return self.info.num_col
+
+    def clear(self):
+        self.labels_.clear()
+        self.group_ptr_.clear()
+        self.weights_.clear()
+        self.base_margin_.clear()
+        self.info = BoosterInfo(0, 0)
 
     def get_weight(self, i):
         if len(self.weights_) != 0:
@@ -31,29 +68,102 @@ class MetaInfo:
         else:
             return 1
 
-    def clear(self):
-        self.num_row_ = self.num_col_ = self.num_nonzero_ = 0
-        self.labels_.clear()
-        self.root_index_.clear()
-        self.group_ptr_.clear()
-        self.weights_.clear()
-        self.base_margin_.clear()
+    def label_abs_sort(self):
+        if self.label_order_cache_ == len(self.labels_):
+            return self.label_order_cache_
+        self.label_order_cache_ = [i[0] for i in sorted(enumerate(
+            self.labels_), key=lambda x: abs(x[1]))]
+        return self.label_order_cache_
+
+    def get_param(self, field):
+        return getattr(self, field)
+
+    def set_param(self, field, val):
+        setattr(self, field, val)
+        return self
 
     def set_info(self, key, val):
-        if key == "root_index":
-            self.root_index_ = val
-        elif key == "label":
+        if key == 'label':
             self.labels_ = val
-        elif key == "weight":
+        elif key == 'weight':
             self.weights_ = val
-        elif key == "base_margin":
+            assert np.all([w >= 0 for w in
+                           self.weights_]), "Weights must be positive values."
+        elif key == 'base_margin':
             self.base_margin_ = val
-        elif key == "group":
-            size = len(val)
-            self.group_ptr_ = [0]*size
-            self.group_ptr_ += val
-            for i in range(size):
-                self.group_ptr_[i] = self.group_ptr_[i-1] + self.group_ptr_[i]
+        elif key == 'group':
+            self.group_ptr_ = np.cumsum(val)
+        elif key == 'qid':
+            is_sorted = lambda a: np.all(a[:-1] <= a[1:])
+            assert is_sorted(val), "`qid` must be sorted in non-decreasing " \
+                                   "order along with data. "
+            self.group_ptr_ = list(np.unique(val))
+            if self.group_ptr_[-1] != len(val):
+                self.group_ptr_.append(len(val))
+        elif key == 'label_lower_bound':
+            self.labels_lower_bound_ = val
+        elif key == 'label_upper_bound':
+            self.labels_upper_bound_ = val
+        elif key == 'feature_weights':
+            assert np.all(val >= 0)
+            self.feature_weigths = val
+        else:
+            raise NameError('Unknown key for MetaInfo: ')
+
+    def get_info(self, key):
+        if key == "label":
+            return self.labels_
+        elif key == "weight":
+            return self.weights_
+        elif key == "base_margin":
+            return self.base_margin_
+        elif key == "label_lower_bound":
+            return self.labels_lower_bound_
+        elif key == "label_upper_bound":
+            return self.labels_upper_bound_
+        elif key == "feature_weights":
+            return self.feature_weigths
+        elif key == "group_ptr":
+            return self.group_ptr_
+        else:
+            raise NameError("Unknown float field name: {key}")
+
+    def slice(self, ridxs):
+        out = MetaInfo(len(ridxs), self.num_col_)
+        out.labels_ = gather(self.labels_, ridxs)
+        out.labels_upper_bound_ = gather(self.labels_upper_bound_, ridxs)
+        out.labels_lower_bound_ = gather(self.labels_lower_bound_, ridxs)
+        if len(self.weights_) + 1 == len(self.group_ptr_):
+            h_weights = out.weights_
+        else:
+            out.weights_ = gather(self.weights_, ridxs)
+        if len(self.base_margin_) != self.num_row_:
+            assert len(self.base_margin_) % self.num_row_ == 0, "Incorrect " \
+                                                                "size of base" \
+                                                                " margin " \
+                                                                "vector. "
+            stride = len(self.base_margin_) / self.num_row_
+            out.base_margin_ = gather(self.base_margin_, ridxs, stride)
+        else:
+            out.base_margin_ = gather(self.base_margin_, ridxs)
+
+        out.feature_weigths = self.feature_weigths
+        out.feature_names = self.feature_names
+        out.feature_types = self.feature_types
+        out.feature_type_names = self.feature_type_names
+        return out
+
+
+def gather(ins, ridxs, stride=1):
+    if len(ins) == 0:
+        return []
+    size = len(ridxs)
+    out = [] * size * stride
+    for i in range(size):
+        ridx = ridxs[i]
+        for j in range(stride):
+            out[i * stride + j] = ins[ridx * stride + j]
+    return out
 
 
 class Entry:
@@ -71,7 +181,7 @@ class Entry:
 
 
 class BatchParam:
-    def __init__(self, device, max_bin, gpu_page_size=0):
+    def __init__(self, device, max_bin=0, gpu_page_size=0):
         self.gpu_id = device
         self.max_bin = max_bin
         self.gpu_page_size = gpu_page_size
@@ -79,12 +189,98 @@ class BatchParam:
     def __ne__(self, other):
         return (self.gpu_id != other.gpu_id) or (
                 self.max_bin != other.max_bin) or (
-                self.gpu_page_size != other.gpu_page_size)
+                       self.gpu_page_size != other.gpu_page_size)
 
 
 class HostSparsePageView:
     def __init__(self):
-        self.offset = None
-        self.data = None
-    # def __getitem__(self, item):
-    #    size = self.offset.data_() + i + 1
+        self.offset = []
+        self.data = []
+
+    def __getitem__(self, item):
+        return self.data[self.offset[item]:self.offset[item + 1]]
+
+    def Size(self):
+        return 0 if len(self.offset) == 0 else len(self.offset) - 1
+
+
+class SparsePage:
+    def __init__(self):
+        self.offset = []
+        self.data = []
+        self.base_rowid = 0
+
+    def get_view(self):
+        return self.offset, self.data
+
+    def Size(self):
+        return 0 if len(self.offset) == 0 else len(self.offset) - 1
+
+    def clear(self):
+        self.base_rowid = 0
+        self.offset = [0]
+        self.data = []
+
+    def set_base_row_id(self, row_id):
+        self.base_rowid = row_id
+
+    def get_transpose(self, num_columns):
+        pass
+
+    def sort_row(self):
+        ncol = self.Size()
+        for i in range(ncol - 1):
+            ndata = self.data[self.offset[i]:self.offset[i + 1]]
+            sdata = sorted(ndata, key=lambda x: x.fvalue)
+            self.data[self.offset[i]:self.offset[i + 1]] = sdata
+
+    def push(self, batch):
+        self.data += batch.data
+        top = self.offset[-1]
+        self.offset += [i+top for i in batch.offset]
+
+    def pushCSC(self, batch):
+        if batch.data.empty():
+            return
+        if len(self.data) == 0:
+            self.data = batch.data
+            self.offset = batch.offset
+            return
+        offset = [0]*len(batch.offset)
+        data = [Entry() for _ in range(len(self.data) + len(batch.data))]
+        n_features = len(batch.offset) - 1
+        beg = 0
+        ptr = 1
+        for i in range(n_features):
+            off_i = self.offset[i]
+            off_i1 = self.offset[i+1]
+            length = off_i1 - off_i
+            data[beg:beg+length] = self.data[off_i:off_i1]
+            beg += length
+            off_i = batch.offset[i]
+            off_i1 = batch.offset[i+1]
+            length = off_i1 - off_i
+            data[beg:beg+length] = batch.data[off_i:off_i1]
+            beg += length
+            assert len(offset) > 1
+            offset[ptr] = beg
+            ptr += 1
+        self.data = data
+        self.offset = offset
+
+
+
+
+if __name__ == "__main__":
+    offset = [0, 3, 5, 6, 8]
+    index = [0, 0, 0, 1, 1, 2, 3, 3]
+    data = [3, 1, -4, 1, 3, 1, 1, 5]
+    pp = []
+    for i in range(8):
+        pp.append(Entry(index[i], data[i]))
+    ncol = len(offset)
+    for i in range(ncol - 1):
+        ndata = pp[offset[i]:offset[i + 1]]
+        pp[offset[i]:offset[i + 1]] = sorted(ndata, key=lambda x: x.fvalue)
+    for i in range(8):
+        print(pp[i].fvalue)

@@ -249,7 +249,7 @@ class DMatrix:
         return self.label
 
     def set_label(self, label):
-        self.handle.info.labels = label
+        self.handle.info.labels_ = label
 
     def get_base_margin(self):
         return self.base_margin

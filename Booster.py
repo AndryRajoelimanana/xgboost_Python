@@ -179,10 +179,10 @@ class BoostLearner:
         preds = self.gbm_.predict(fmat, self.find_buffer_offset(data),
                                   data.info.info, out_pred, ntree_limit)
         ndata = len(preds)
-        if len(data.info.base_margin) != 0:
-            assert ndata == len(data.info.base_margin), "base margin"
+        if len(data.info.base_margin_) != 0:
+            assert ndata == len(data.info.base_margin_), "base margin"
             for j in range(ndata):
-                preds[j] += data.info.base_margin[j]
+                preds[j] += data.info.base_margin_[j]
         else:
             for j in range(ndata):
                 preds[j] += self.mparam.base_score
