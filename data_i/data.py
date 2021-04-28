@@ -181,7 +181,7 @@ class Entry:
 
 
 class BatchParam:
-    def __init__(self, device, max_bin=0, gpu_page_size=0):
+    def __init__(self, device=0, max_bin=0, gpu_page_size=0):
         self.gpu_id = device
         self.max_bin = max_bin
         self.gpu_page_size = gpu_page_size
@@ -267,6 +267,77 @@ class SparsePage:
             ptr += 1
         self.data = data
         self.offset = offset
+
+
+class CSCPage(SparsePage):
+    def __init__(self, page):
+        super().__init__()
+        self.page = page
+
+
+class SortedCSCPage(SparsePage):
+    def __init__(self, page):
+        super().__init__()
+        self.page = page
+
+
+class BatchIteratorImpl:
+    pass
+
+
+class BatchIterator:
+    def __init__(self, impl):
+        self.impl_ = impl
+
+    def __ne__(self, other):
+        return not self.impl_.at_end()
+
+    def at_end(self):
+        return self.impl_.at_end()
+
+
+class BatchSet:
+    def __init__(self, begin_iter):
+        self.begin_iter_ = begin_iter
+
+    def begin(self):
+        return self.begin_iter_
+
+    def end(self):
+        return None
+
+
+class DMatrix:
+    def __init__(self, begin_iter):
+        pass
+
+    def info(self):
+        pass
+
+    def set_info(self, key, val):
+        self.info().set_info(key, val)
+
+    def GetThreadLocal(self):
+        pass
+
+    def GetBatches(self, param = {}):
+        return
+
+    def SingleColBlock(self):
+        pass
+
+    def is_dense(self):
+        return self.info().num_non_zero_ ==  self.info().num_row_ * self.info().num_col_
+
+    def create(self, iters, proxy, reset, next, missing, nthread, max_bin):
+        pass
+
+
+
+
+
+
+
 
 
 
