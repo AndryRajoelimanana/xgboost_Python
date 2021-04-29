@@ -337,11 +337,6 @@ class DMatrix:
 
 
 
-
-
-
-
-
 if __name__ == "__main__":
     offset = [0, 3, 5, 6, 8]
     index = [0, 0, 0, 1, 1, 2, 3, 3]

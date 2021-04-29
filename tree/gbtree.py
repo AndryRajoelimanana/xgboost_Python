@@ -4,7 +4,8 @@ from updaters.colmaker import ColMaker
 from updaters.pruner import TreePruner
 from updaters.refresher import TreeRefresher
 from tree.tree import RegTree
-from data.data_mat import bst_gpair
+from data_i.data_mat import bst_gpair
+from enum import Enum
 
 
 class GBTree:
@@ -14,8 +15,8 @@ class GBTree:
 
     def __init__(self):
         self.cfg = []
-        self.mparam = self.ModelParam()
-        self.tparam = self.TrainParam()
+        self.mparam = GBTreeModelParam()
+        self.tparam = GBTreeTrainParam()
         self.pred_buffer = []
         self.pred_counter = []
         self.updaters = []
@@ -184,49 +185,81 @@ class GBTree:
         # out_pred[0] = psum
         # for i in range(self.mparam.size_leaf_vector):
 
-    class TrainParam:
-        def __init__(self):
-            self.nthread = 0
-            self.updater_seq = ['grow_colmaker']
-            self.num_parallel_tree = 1
+
+class GBTreeTrainParam:
+    def __init__(self, process_type=0, predictor=0, tree_method=0):
+        self.nthread = 0
+        self.updater_seq = ['grow_colmaker']
+        self.num_parallel_tree = 1
+        self.updater_initialized = 0
+        self.process_type = process_type
+        self.predictor = predictor
+        self.tree_method = tree_method
+
+    def set_param(self, name, val):
+        if name == 'updater' and val not in self.updater_seq:
+            self.updater_seq = [val]
             self.updater_initialized = 0
+        elif name == 'num_parallel_tree':
+            self.num_parallel_tree = val
 
-        def set_param(self, name, val):
-            if name == 'updater' and val not in self.updater_seq:
-                self.updater_seq = [val]
-                self.updater_initialized = 0
-            elif name == 'num_parallel_tree':
-                self.num_parallel_tree = val
 
-    class ModelParam:
-        def __init__(self):
-            self.num_trees = 0
-            self.num_roots = self.num_feature = 0
-            self.num_pbuffer = 0
-            self.num_output_group = 1
-            self.size_leaf_vector = 0
-            self.reserved = np.zeros(31)
+class GBTreeModelParam:
+    def __init__(self):
+        self.num_trees = 0
+        self.size_leaf_vector = 0
+        self.num_roots = 1
+        self.num_feature = 0
+        self.num_pbuffer = 0
+        self.num_output_group = 1
 
-        def set_param(self, name, val):
-            if name == 'bst:num_pbuffer':
-                self.num_pbuffer = val
-            elif name == 'bst:num_output_group':
-                self.num_output_group = val
-            elif name == 'bst:num_roots':
-                self.num_roots = val
-            elif name == 'bst:num_feature':
-                self.num_feature = val
-            elif name == 'bst:size_leaf_vector':
-                self.size_leaf_vector = val
+        self.reserved = np.zeros(31)
 
-        def pred_buffer_size(self):
-            """ size of needed preduction buffer """
-            return self.num_output_group * self.num_pbuffer * \
-                   (self.size_leaf_vector + 1)
+    def set_param(self, name, val):
+        if name == 'bst:num_pbuffer':
+            self.num_pbuffer = val
+        elif name == 'bst:num_output_group':
+            self.num_output_group = val
+        elif name == 'bst:num_roots':
+            self.num_roots = val
+        elif name == 'bst:num_feature':
+            self.num_feature = val
+        elif name == 'bst:size_leaf_vector':
+            self.size_leaf_vector = val
 
-        def buffer_offset(self, buffer_index, bst_group):
-            """ get the buffer offset given a buffer index and group id """
-            if buffer_index < 0:
-                return -1
-            return (buffer_index + self.num_pbuffer * bst_group) * \
-                   (self.size_leaf_vector + 1)
+    def pred_buffer_size(self):
+        """ size of needed preduction buffer """
+        return self.num_output_group * self.num_pbuffer * \
+               (self.size_leaf_vector + 1)
+
+    def buffer_offset(self, buffer_index, bst_group):
+        """ get the buffer offset given a buffer index and group id """
+        if buffer_index < 0:
+            return -1
+        return (buffer_index + self.num_pbuffer * bst_group) * \
+               (self.size_leaf_vector + 1)
+
+
+class TreeMethod(Enum):
+    kAuto = 0
+    kApprox = 1
+    kExact = 2
+    kHist = 3
+    kGPUHist = 5
+
+
+class TreeProcessType(Enum):
+    kDefault = 0
+    kUpdate = 1
+
+
+class PredictorType(Enum):
+    kAuto = 0
+    kCPUPredictor = 1
+    kGPUPredictor = 2
+    kOneAPIPredictor = 3
+
+
+def layer_to_tree(model, tparam, layer_begin, layer_end):
+    pass
+
