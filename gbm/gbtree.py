@@ -1,7 +1,6 @@
-from gbm.gbm import GradientBooster
+from gbm.gbm import GradientBoosteer
 from tree.gbtree import GBTreeTrainParam, TreeProcessType
 from gbm.gbtree_model import GBTreeModel
-
 
 
 class GBTree(GradientBooster):

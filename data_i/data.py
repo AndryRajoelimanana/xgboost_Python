@@ -237,7 +237,7 @@ class SparsePage:
     def push(self, batch):
         self.data += batch.data
         top = self.offset[-1]
-        self.offset += [i+top for i in batch.offset]
+        self.offset += [i + top for i in batch.offset]
 
     def pushCSC(self, batch):
         if batch.data.empty():
@@ -246,21 +246,21 @@ class SparsePage:
             self.data = batch.data
             self.offset = batch.offset
             return
-        offset = [0]*len(batch.offset)
+        offset = [0] * len(batch.offset)
         data = [Entry() for _ in range(len(self.data) + len(batch.data))]
         n_features = len(batch.offset) - 1
         beg = 0
         ptr = 1
         for i in range(n_features):
             off_i = self.offset[i]
-            off_i1 = self.offset[i+1]
+            off_i1 = self.offset[i + 1]
             length = off_i1 - off_i
-            data[beg:beg+length] = self.data[off_i:off_i1]
+            data[beg:beg + length] = self.data[off_i:off_i1]
             beg += length
             off_i = batch.offset[i]
-            off_i1 = batch.offset[i+1]
+            off_i1 = batch.offset[i + 1]
             length = off_i1 - off_i
-            data[beg:beg+length] = batch.data[off_i:off_i1]
+            data[beg:beg + length] = batch.data[off_i:off_i1]
             beg += length
             assert len(offset) > 1
             offset[ptr] = beg
@@ -320,21 +320,69 @@ class DMatrix:
     def GetThreadLocal(self):
         pass
 
-    def GetBatches(self, param = {}):
+    def GetBatches(self, param={}):
         return
 
     def SingleColBlock(self):
         pass
 
     def is_dense(self):
-        return self.info().num_non_zero_ ==  self.info().num_row_ * self.info().num_col_
+        return self.info().num_non_zero_ == self.info().num_row_ * self.info().num_col_
 
     def create(self, iters, proxy, reset, next, missing, nthread, max_bin):
         pass
 
+    def load_binary(self, buffer):
+        pass
 
 
+class GetBuffer:
+    def __init__(self, buf):
+        self.buf = buf.tobytes()
+        self.datatype = {1: np.float32, 2: np.double, 3: np.uint32,
+                         4: np.uint64, 5: str}
 
+    def get_b(self, beg, dtypes):
+        return self.buf[beg:beg + size].decode('utf-8'), beg + size
+
+    def get_int(self, beg, size=4, gg='little'):
+        return int.from_bytes(self.buf[beg:beg + size], gg), beg + size
+
+    def get_scalar(self, start_idx, dtypes):
+        s_dtype = np.zeros(1, dtype=dtypes).itemsize
+        return np.frombuffer(self.buf[start_idx:start_idx+s_dtype],
+                             dtype=dtypes)[0]
+
+    def get_vector(self, start_idx, dtypes, nrow):
+        s_dtype = np.zeros(1, dtype=dtypes).itemsize
+        if nrow == 0:
+            return np.zeros(0, dtype=dtypes)
+        data = np.frombuffer(self.buf[start_idx:start_idx+s_dtype*nrow],
+                             dtype=dtypes)
+        return data
+
+    def get_value(self, name):
+        start = self.buf.find(name)
+        end_name = start + len(name)
+        names = self.buf[start:end_name]
+        dtypes_int = self.buf[end_name]
+        dtypes = self.datatype[dtypes_int]
+        is_scalar = self.buf[end_name+1] == 1
+        if is_scalar:
+            v = self.get_scalar(end_name+2, dtypes)
+        else:
+            nrow = int.from_bytes(self.buf[end_name + 2:end_name + 10],
+                                  'little')
+            v = self.get_vector(end_name+18,  dtypes, nrow)
+        return names, v
+
+    def to_dict(self):
+        key_list = [b'num_row', b'num_col', b'labels']
+        dict_dm = {}
+        for k in key_list:
+            nn, v = self.get_value(k)
+            dict_dm[k] = v
+        return dict_dm
 
 
 if __name__ == "__main__":
