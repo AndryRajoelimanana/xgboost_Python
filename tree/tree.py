@@ -288,7 +288,7 @@ class RegTree(TreeModel):
             w = self.sta(node_index).sum_hess
             hot_zero_fraction = self.stat(hot_index).sum_hess / w
             cold_zero_fraction = self.stat(cold_index).sum_hess / w
-            inmcoming_zero_fraction = 1
+            incoming_zero_fraction = 1
             incoming_one_fraction = 1
 
             # see if we have already split on this feature,
@@ -364,12 +364,12 @@ class RegTree(TreeModel):
     def dump_model(self, fmap, with_stats, formats):
         pass
 
-    # def fill_node_mean_values(self):
-    #     num_nodes = self.param.num_nodes
-    #     if len(self.node_mean_values_) == num_nodes:
-    #         return
-    #     resize(self.node_mean_values_, num_nodes)
-    #     self.fill_node_mean_value(0)
+    def fill_node_mean_values(self):
+        num_nodes = self.param.num_nodes
+        if len(self.node_mean_values_) == num_nodes:
+            return
+        resize(self.node_mean_values_, num_nodes)
+        self.fill_node_mean_value(0)
 
     def fill_node_mean_value(self, nid):
         node = self[nid]
@@ -455,11 +455,16 @@ class RegTree(TreeModel):
     def __getitem__(self, nid):
         return self.nodes_[nid]
 
-    def equal(self, b):
-        if self.num_extra_nodes() != b.num_extra_nodes():
-            return False
-        ret = True
+    def equal(self, other):
+        self._ret = True
+        def spl(nidx):
+            if not self.nodes_[nidx] == other.nodes_[nidx]:
+                self._ret = False
+                return False
+            return True
 
+        self.walk_tree(spl)
+        return self._ret
 
     def __eq__(self, b):
         return self.nodes_ == b.nodes_ and self.stats_ == b.stats_ and \
@@ -517,7 +522,7 @@ class PathElement:
     def __init__(self, i, z, o, w):
         self.feature_index = i
         self.zero_fraction = z
-        self.one_fraction = 0
+        self.one_fraction = o
         self.pweight = w
 
 
@@ -711,25 +716,11 @@ if __name__ == '__main__':
     tree1 = RegTree()
     tree1.expandnode(0, 2, 0.2, True, 0.5, 1, 1, 0.1, 100, 50, 50, -1)
     tree1.expandnode(1, 2, 0.2, True, 0.3, 1, 1, 0.1, 100, 50, 50, -1)
-    tree1.expandnode(2, 2, 0.2, True, 0.1, 1, 1, 0.1, 100, 50, 50, -1)
-
-    ret = True
-
-    def fv(nidx):
-        if not tree.nodes_[nidx] == tree1.nodes_[nidx]:
-            ret = False
-            return False
-        return True
-
-    def eq():
-        tree.walk_tree(fv)
-        print(ret)
+    # tree1.expandnode(3, 2, 0.2, True, 0.1, 1, 1, 0.1, 100, 50, 50, -1)
 
     print(tree.get_num_split_nodes())
     print(tree.get_num_leaves())
-
-    print('ret', ret)
-    # tree.walk_tree(fv)
+    print(tree.equal(tree1))
 
     print('teto')
     print(3)

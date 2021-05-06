@@ -6,14 +6,83 @@ from updaters.refresher import TreeRefresher
 from tree.tree import RegTree
 from data_i.data_mat import bst_gpair
 from enum import Enum
+from gbm.gbm import GradientBooster
 
 
-class GBTree:
+class TreeMethod(Enum):
+    kAuto = 0
+    kApprox = 1
+    kExact = 2
+    kHist = 3
+    kGPUHist = 5
+
+
+class TreeProcessType(Enum):
+    kDefault = 0
+    kUpdate = 1
+
+
+class PredictorType(Enum):
+    kAuto = 0
+    kCPUPredictor = 1
+    kGPUPredictor = 2
+    kOneAPIPredictor = 3
+
+
+class GBTreeTrainParam:
+    def __init__(self, process_type=0, predictor=0, tree_method=0):
+        self.nthread = 0
+        self.updater_seq = ['grow_colmaker']
+        self.num_parallel_tree = 1
+        self.updater_initialized = 0
+        self.process_type = process_type
+        self.predictor = predictor
+        self.tree_method = tree_method
+
+    def set_param(self, name, val):
+        if name == 'updater' and val not in self.updater_seq:
+            self.updater_seq = [val]
+            self.updater_initialized = 0
+        elif name == 'num_parallel_tree':
+            self.num_parallel_tree = val
+
+
+def layer_to_tree(model, tparam, layer_begin, layer_end):
+    groups = model.learner_model_param.num_output_group
+    tree_begin = layer_begin * groups * tparam.num_parallel_tree
+    tree_end = layer_end * groups * tparam.num_parallel_tree
+    if tree_end == 0:
+        tree_end = len(model.trees)
+    if len(model.trees) != 0:
+        assert tree_begin <= tree_end
+    return tree_begin, tree_end
+
+
+def slice_trees(layer_begin, layer_end, step, model, tparam, layer_trees, fn):
+    tree_begin, tree_end = layer_to_tree(model, tparam, layer_begin, layer_end)
+    if tree_end > len(model.trees):
+        return True
+    layer_end = len(model.trees)/layer_trees if layer_end == 0 else layer_end
+    n_layers = (layer_end - layer_begin) / step
+    in_it = tree_begin
+    out_it = 0
+    for l in range(n_layers):
+        for i in range(layer_trees):
+            assert in_it < tree_end
+            fn(in_it, out_it)
+            out_it += 1
+            in_it += 1
+        in_it += (step - 1) * layer_trees
+    return False
+
+
+class GBTree(GradientBooster):
     """
     xgboost.gbm : GBTREE gbm/gbtree-inl.hpp
     """
 
-    def __init__(self):
+    def __init__(self, booster_config):
+        self.model_ = booster_config
         self.cfg = []
         self.mparam = GBTreeModelParam()
         self.tparam = GBTreeTrainParam()
@@ -23,6 +92,22 @@ class GBTree:
         self.trees = []
         self.tree_info = []
         self.thread_temp = []
+
+
+    def configure(self, cfg):
+        pass
+
+    def perform_reeMethodHeuristic(self, fmat):
+        pass
+
+    def configure_updaters(self):
+        pass
+
+    def configure_with_known_data(self):
+        pass
+
+    def do_boost(self):
+        pass
 
     def set_param(self, name, val):
         if name[:4] == 'bst:':
@@ -185,23 +270,20 @@ class GBTree:
         # out_pred[0] = psum
         # for i in range(self.mparam.size_leaf_vector):
 
+    def layer_trees(self):
+        n_trees = self.model_.learner_model_param.num_output_group * self.tparam_.num_parallel_tree
+        return n_trees
 
-class GBTreeTrainParam:
-    def __init__(self, process_type=0, predictor=0, tree_method=0):
-        self.nthread = 0
-        self.updater_seq = ['grow_colmaker']
-        self.num_parallel_tree = 1
-        self.updater_initialized = 0
-        self.process_type = process_type
-        self.predictor = predictor
-        self.tree_method = tree_method
+    def slice(self, layer_begin, layer_end, step, out, out_of_bound):
+        pass
 
-    def set_param(self, name, val):
-        if name == 'updater' and val not in self.updater_seq:
-            self.updater_seq = [val]
-            self.updater_initialized = 0
-        elif name == 'num_parallel_tree':
-            self.num_parallel_tree = val
+    def boosted_rounds(self):
+        assert self.tparam_.num_parallel_tree != 0
+        assert self.model_.learner_model_param.num_output_group != 0
+        return len(self.model_.trees)/self.layer_trees()
+
+    def inplace_predict(self):
+        tree_begin, tree_end = self.laye
 
 
 class GBTreeModelParam:
@@ -240,26 +322,6 @@ class GBTreeModelParam:
                (self.size_leaf_vector + 1)
 
 
-class TreeMethod(Enum):
-    kAuto = 0
-    kApprox = 1
-    kExact = 2
-    kHist = 3
-    kGPUHist = 5
 
 
-class TreeProcessType(Enum):
-    kDefault = 0
-    kUpdate = 1
-
-
-class PredictorType(Enum):
-    kAuto = 0
-    kCPUPredictor = 1
-    kGPUPredictor = 2
-    kOneAPIPredictor = 3
-
-
-def layer_to_tree(model, tparam, layer_begin, layer_end):
-    pass
 
