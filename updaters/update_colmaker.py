@@ -79,9 +79,9 @@ class ColMaker:
                 self.snode[nid].stats_.set_leaf_vec(self.param,
                                                     p_tree.leafvec(nid))
 
-        def init_data(self, gpair, fmat, root_index, tree):
-            assert tree.param_.num_nodes == tree.param_.num_roots, "Colmaker"
-            rowset = fmat.buffered_rowset()
+        def init_data(self, gpair, fmat):
+
+
             self.position = self.setup_position(gpair, root_index, rowset)
             self.feat_index = self.init_findex(fmat)
             stemp, snode = self.setup_stat_temp(self.nthread)
@@ -246,7 +246,7 @@ class ColMaker:
                             else:
                                 self.position[ridx] = tree[nid].right_child()
 
-        def setup_position(self, gpair, root_index, rowset):
+        def setup_position(self, gpair, fmat):
             position = [0]*len(gpair)
             if len(root_index) == 0:
                 for i in range(len(rowset)):

@@ -48,7 +48,7 @@ def calc_gain_stat(p, stat):
 
 class TrainParam:
     """
-    param.h
+    param_.h
     """
 
     def __init__(self):
@@ -149,7 +149,7 @@ class TrainParam:
 
 class GradStats:
     """
-    param.h
+    param_.h
     """
 
     def __init__(self, sum_grad=0, sum_hess=0, param=None):
@@ -211,7 +211,7 @@ class GradStats:
 
 class SplitEntry:
     """
-    param.h
+    param_.h
     """
 
     def __init__(self, loss_chg=0, sindex=0, split_value=0):

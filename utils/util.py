@@ -9,6 +9,7 @@ def resize(lst, num, default=0):
         for i in range(len(lst), int(num)):
             lst.append(default)
 
+
 def to_lower(in_str):
     return ' '.join(re.split("([A-Z][^A-Z]*)", in_str)).strip().replace('  ', '_').lower()
 

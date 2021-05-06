@@ -416,8 +416,8 @@ class RegTree(TreeModel):
         resize(self.split_types_, self.param.num_nodes, FeatureType.kNumerical)
         resize(self.split_categories_segments_, self.param.num_nodes,
                Segment())
-        # resize(self.leaf_vector, self.param.num_nodes *
-        #       self.param.size_leaf_vector)
+        # resize(self.leaf_vector, self.param_.num_nodes *
+        #       self.param_.size_leaf_vector)
         return nd
 
     def _delete_node(self, nid):
@@ -468,7 +468,7 @@ class RegTree(TreeModel):
 
     def __eq__(self, b):
         return self.nodes_ == b.nodes_ and self.stats_ == b.stats_ and \
-               self.deleted_nodes_ == b.deleted_nodes_ and self.param == b.param
+               self.deleted_nodes_ == b.deleted_nodes_ and self.param == b.param_
 
 
 class Entry:

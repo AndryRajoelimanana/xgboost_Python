@@ -17,7 +17,7 @@ class GradientBooster:
     def boosted_rounds(self):
         pass
 
-    def do_boost(self, p_fmat, in_gpair, PredictionCacheEntry):
+    def do_boost(self, p_fmat, in_gpair, pred_cache_entry):
         pass
 
     def predict_batch(self, dmat, out_preds, training, layer_begin, layer_end):
@@ -40,6 +40,10 @@ class ParamFieldInfo:
         self.type_info_str = types_info_str
         self.description = description
 
+
+class PredictionCacheEntry:
+    def __init__(self):
+        pass
 
 
 class dlmc_reg:
@@ -67,9 +71,71 @@ class dlmc_reg:
         self.arguments += args
 
 
+class FunctionRegEntryBase:
+    def __init__(self):
+        self.arguments = []
+        self.body = self.description = self.return_type = None
 
-class GradientBoosterReg(dlmc_reg):
-    pass
+    def set_body(self, body):
+        self.body = body
+        return self
+
+    def describe(self, description):
+        self.description = description
+        return self
+
+    def add_argument(self, name, types, description):
+        info = ParamFieldInfo()
+        info.name = name
+        info.type = types
+        info.type_info_str = info.type
+        info.description = description
+        self.arguments.append(info)
+        return self
+
+    def add_arguments(self, args):
+        self.arguments += args
+
+    def set_return_type(self, types):
+        self.return_type = types
+        return self
+
+
+class GradientBoosterReg(FunctionRegEntryBase):
+    def __init__(self):
+        pass
+
 
 class Learner:
+    pass
+
+
+class Registry:
+    def __init__(self):
+        self.const_list_ = []
+        self.entry_list_ = []
+        self.fmap_ = {}
+
+    def list(self):
+        return self.const_list_
+
+    def list_all_names(self):
+        return self.fmap_.keys()
+
+    def find(self, k):
+        return self.fmap_[k]
+
+    def get(self):
+        pass
+
+    def add_alias(self, k, alias):
+        e = self.fmap_[k]
+        if alias in self.fmap_.keys():
+            assert e == self.fmap_[alias]
+        else:
+            self.fmap_[alias] = e
+
+    def _register__(self, name):
+        pass
+
 
