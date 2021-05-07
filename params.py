@@ -1,4 +1,6 @@
 import numpy as np
+from enum import Enum
+import sys
 
 
 def thresholdL1(w, alpha):
@@ -15,7 +17,12 @@ def calc_gain_given_weight(p, sum_grad, sum_hess, w):
     return -(2.0 * sum_grad * w + (sum_hess + p.reg_lambda) * (w * w))
 
 
-def calc_weight(p, sum_grad, sum_hess):
+def calc_weight(p, sum_grad_in, sum_hess=0):
+    if isinstance(sum_grad_in, GradientPair):
+        sum_grad = sum_grad_in.get_grad()
+        sum_hess = sum_grad_in.get_hess()
+    else:
+        sum_grad = sum_grad_in
     if sum_hess < p.min_child_weight or sum_hess <= 0:
         return 0
     dw = - thresholdL1(sum_grad, p.reg_alpha)/(sum_hess + p.reg_lambda)
@@ -24,7 +31,12 @@ def calc_weight(p, sum_grad, sum_hess):
     return dw
 
 
-def calc_gain(p, sum_grad, sum_hess):
+def calc_gain(p, sum_grad_in, sum_hess=0):
+    if isinstance(sum_grad_in, GradStats):
+        sum_grad = sum_grad_in.get_grad()
+        sum_hess = sum_grad_in.get_hess()
+    else:
+        sum_grad = sum_grad_in
     if sum_hess < p.min_child_weight:
         return 0
     if p.max_delta_step == 0.0:
@@ -42,8 +54,8 @@ def calc_gain(p, sum_grad, sum_hess):
             return ret + p.reg_alpha * np.abs(w)
 
 
-def calc_gain_stat(p, stat):
-    return calc_gain(p, stat.get_grad(), stat.get_hess())
+
+
 
 
 class TrainParam:
@@ -53,18 +65,38 @@ class TrainParam:
 
     def __init__(self):
         self.learning_rate = 0.3
-        self.min_child_weight = 1.0
+        self.min_split_loss = 0.0
         self.max_depth = 6
+        self.max_leaves = 0
+        self.max_bin = 256
+        self.grow_policy = self.TreeGrowPolicy.kDepthWise
+        self.min_child_weight = 1.0
         self.reg_lambda = 1.0
         self.reg_alpha = 0.0
-        self.default_direction = 0
+        self.default_direction = self.Direction.learn
+        self.max_delta_step = 0.0
         self.subsample = 1.0
-        self.colsample_bytree = 1.0
+        self.sampling_method = self.SamplingMethod.kUniform
+        self.colsample_bynode = 1.0
         self.colsample_bylevel = 1.0
+        self.colsample_bytree = 1.0
+
+        self.sketch_eps = 0.03
+        self.sketch_ratio = 2.0
+        self.cache_opt = True
+        self.refresh_leaf = True
+
         self.opt_dense_col = 1.0
-        self.nthread = 0
-        self.size_leaf_vector = 0
-        self.min_split_loss = 0
+        self.monotone_constraints = []
+
+        self.interaction_constraints = ''
+        self.split_evaluator = "elastic_net,monotonic"
+
+        self.sparse_threshold = 0.2
+        self.enable_feature_grouping = 0
+        self.max_conflict_rate = 0
+        self.max_search_group = 100
+
 
     def set_param(self, name, value):
         if name == 'gamma':
@@ -105,23 +137,41 @@ class TrainParam:
             elif value == 'right':
                 self.default_direction = 2
 
+    class TreeGrowPolicy(Enum):
+        kDepthWise = 0
+        kLossGuide = 1
+
+    class SamplingMethod(Enum):
+        kUniform = 0
+        kGradientBased = 1
+
+    class Direction(Enum):
+        learn = 0
+        left = 1
+        right = 2
+
     def need_prune(self, loss_chg, depth):
         return loss_chg < self.min_split_loss or (
                 self.max_depth != 0 and depth > self.max_depth)
 
-    def calc_gain(self, sum_grad, sum_hess):
-        if sum_hess < self.min_child_weight:
-            return 0
-        if self.reg_alpha == 0:
-            return (sum_grad * sum_grad) / (sum_hess + self.reg_lambda)
+    def max_sketch_size(self):
+        ret = self.sketch_ratio/self.sketch_eps
+        assert ret > 0
+        return ret
+
+    def max_nodes(self):
+        assert self.max_depth != 0 or self.max_leaves != 0, "Max leaves and max depth cannot both be unconstrained."
+        if self.max_leaves > 0:
+            n_nodes = self.max_leaves * 2 - 1
         else:
-            return (thresholdL1(sum_grad, self.reg_alpha)) ** 2 / (sum_hess +
-                                                                   self.reg_lambda)
+            assert self.max_depth <= 31
+            n_nodes = (1 << (self.max_depth + 1)) -1
+        assert n_nodes != 0
+        return n_nodes
 
     def need_forward_search(self, col_density=0.0):
         return (self.default_direction == 2) or ((self.default_direction == 0)
-                                                 and (
-                                                             col_density < self.opt_dense_col))
+                                                 and (col_density < self.opt_dense_col))
 
     def need_backward_search(self, col_density=0.0):
         return self.default_direction != 2
@@ -134,14 +184,6 @@ class TrainParam:
         else:
             return -2 * (ret + self.reg_alpha * np.abs(w))
 
-    def calc_gain_given_weight(self, p, sum_grad, sum_hess, w):
-        if sum_hess <= 0:
-            return 0
-        # avoiding - 2 (G*w + 0.5(H+lambda)*w^2 (using obj = G^2/(H+lambda))
-        if not self.has_constraint:
-            return (thresholdL1(sum_grad, p.reg_alpha) ** 2) / (sum_hess +
-                                                                p.reg_lambda)
-        return -(2.0 * sum_grad * w + (sum_hess + p.reg_lambda) * (w * w))
 
     def cannot_split(self, sum_hess, depth):
         return sum_hess < self.min_child_weight * 2
@@ -152,9 +194,9 @@ class GradStats:
     param_.h
     """
 
-    def __init__(self, sum_grad=0, sum_hess=0, param=None):
-        if param is None:
-            self.param = TrainParam()
+    def __init__(self, sum_grad=0.0, sum_hess=0.0, param=None):
+        # if param is None:
+        #    self.param = TrainParam()
         self.sum_grad = sum_grad
         self.sum_hess = sum_hess
 
@@ -348,6 +390,9 @@ if __name__ == '__main__':
     mm = nn / nn1
     nn2 = GradientPair(2, 3)
     nn /= nn2
+    print(0)
+    nnn = GradStats()
+    vv = sys.getsizeof(nnn)
     print(0)
 
 
