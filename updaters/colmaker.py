@@ -17,11 +17,17 @@ class ColMakerTrainParam(TrainParam):
 
 class ColMaker:
     """ xgboost.tree  updater_colmaker-inl.hpp"""
-    def __init__(self):
-        self.param_ = ColMakerTrainParam()
+    def __init__(self, data):
+        self.param_ = TrainParam()
+        self.colmaker_train_param_ = ColMakerTrainParam()
+        self.data_ = data
+        self.column_densities_ = self.lazy_get_column_density()
 
     def set_param(self, name, value):
         self.param_.set_param(name, value)
+
+    def lazy_get_column_density(self):
+        return self.data_.getnnz(axis=0)/self.data_.shape[0]
 
     def update(self, gpair, p_fmat, info, trees):
         GradStats.check_info(info)
@@ -29,7 +35,7 @@ class ColMaker:
         self.param_.learning_rate = lr / len(trees)
         for i in range(len(trees)):
             builder = ColMaker.Builder(self.param_)
-            builder.update(gpair, p_fmat, info, trees[i])
+            builder.update(gpair, p_fmat, trees[i])
 
     class ThreadEntry:
         def __init__(self, param):

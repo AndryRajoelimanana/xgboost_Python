@@ -132,6 +132,34 @@ class RegTree(TreeModel):
             self.nodes_[i].set_leaf(0)
             self.nodes_[i].set_parent(RegTree.kInvalidNodeId)
 
+    def _delete_node(self, nid):
+        assert nid >= 1, "cannot delete root"
+        pid = self[nid].parent()
+        if nid == self[pid].left_child():
+            self[pid].set_left_child(RegTree.kInvalidNodeId)
+        else:
+            self[pid].set_right_child(RegTree.kInvalidNodeId)
+        self.deleted_nodes_.append(nid)
+        self.nodes_[nid].mark_delete()
+        self.param.num_deleted += 1
+
+    def change_to_leaf(self, rid, value):
+        mssg = "cannot delete a non terminal child"
+        assert self.nodes_[self.nodes_[rid].left_child()].is_leaf(), mssg
+        assert self.nodes_[self.nodes_[rid].right_child()].is_leaf(), mssg
+        self._delete_node(self.nodes_[rid].left_child())
+        self._delete_node(self.nodes_[rid].right_child())
+        self.nodes_[rid].set_leaf(value)
+
+    def collapse_to_leaf(self, rid, value):
+        if self.nodes_[rid].is_leaf():
+            return
+        if not self.nodes_[self.nodes_[rid].left_child()].is_leaf():
+            self.collapse_to_leaf(self.nodes_[rid].left_child(), 0.0)
+        if not self.nodes_[self.nodes_[rid].right_child()].is_leaf():
+            self.collapse_to_leaf(self.nodes_[rid].right_child(), 0.0)
+        self.change_to_leaf(rid, value)
+
     def get_nodes(self):
         return self.nodes_
 
@@ -140,19 +168,6 @@ class RegTree(TreeModel):
 
     def stat(self, i):
         return self.stats_[i]
-
-    # def walk_tree(self, func):
-    #     nodes = [RegTree.kRoot]
-    #     while not len(nodes) == 0:
-    #         nidx = nodes.pop()
-    #         if not func(nidx):
-    #             return
-    #         left = self[nidx].left_child()
-    #         right = self[nidx].right_child()
-    #         if left != RegTree.kInvalidNodeId:
-    #             nodes.append(left)
-    #         if right != RegTree.kInvalidNodeId:
-    #             nodes.append(right)
 
     def walk_tree(self, func):
         nodes = [RegTree.kRoot]
@@ -174,6 +189,7 @@ class RegTree(TreeModel):
         pleft = self._alloc_node()
         pright = self._alloc_node()
         node = self.nodes_[nid]
+        assert node.is_leaf()
         node.set_left_child(pleft)
         node.set_right_child(pright)
         self.nodes_[node.left_child()].set_parent(nid, True)
@@ -198,6 +214,26 @@ class RegTree(TreeModel):
         self.split_categories_segments_[nid].beg = orig_size
         self.split_categories_segments_[nid].size = len(split_cat)
 
+    def fill_node_mean_values(self):
+        num_nodes = self.param.num_nodes
+        if len(self.node_mean_values_) == num_nodes:
+            return
+        resize(self.node_mean_values_, num_nodes)
+        self.fill_node_mean_value(0)
+
+    def fill_node_mean_value(self, nid):
+        node = self[nid]
+        if node.is_leaf():
+            result = node.leaf_value()
+        else:
+            result = self.fill_node_mean_value(node.left_child()) * self.stat(
+                node.left_child()).sum_hess
+            result += self.fill_node_mean_value(node.right_child()) * self.stat(
+                node.right_child()).sum_hess
+            result /= self.stat(nid).sum_hess
+        self.node_mean_values_[nid] = result
+        return result
+
     def get_depth(self, nid):
         depth = 0
         while not self.nodes_[nid].is_root():
@@ -220,23 +256,27 @@ class RegTree(TreeModel):
 
     def get_num_leaves(self):
         self._nleaves = 0
+
         def spl(nidx):
             if self[nidx].is_leaf():
                 self._nleaves += 1
             return True
+
         self.walk_tree(spl)
         return self._nleaves
 
     def get_num_split_nodes(self):
         self._nsplits = 0
+
         def spl(nidx):
             if not self[nidx].is_leaf():
                 self._nsplits += 1
             return True
+
         self.walk_tree(spl)
         return self._nsplits
 
-    def get_leaf_index(self, feat, has_missing=True):
+    def get_leaf_index(self, feat, has_missing=False):
         nid = 0
         while not self[nid].is_leaf():
             split_index = self[nid].split_index()
@@ -336,7 +376,7 @@ class RegTree(TreeModel):
         nid = 0
         while not self[nid].is_leaf():
             split_index = self[nid].split_index()
-            feat = self.FVec()
+            # feat = self.FVec()
             nid = self.get_next(nid, feat.get_fvalue(split_index),
                                 feat.is_missing(split_index))
             new_value = self.node_mean_values_[nid]
@@ -345,7 +385,7 @@ class RegTree(TreeModel):
         leaf_value = self[nid].leaf_value()
         out_contribs[split_index] += leaf_value - node_value
 
-    def get_next(self, pid, fvalue, has_missing, is_unknown):
+    def get_next(self, pid, fvalue, is_unknown, has_missing=False):
         # is_unknown = has_missing and is_unknown
         if has_missing:
             if is_unknown:
@@ -363,26 +403,6 @@ class RegTree(TreeModel):
 
     def dump_model(self, fmap, with_stats, formats):
         pass
-
-    def fill_node_mean_values(self):
-        num_nodes = self.param.num_nodes
-        if len(self.node_mean_values_) == num_nodes:
-            return
-        resize(self.node_mean_values_, num_nodes)
-        self.fill_node_mean_value(0)
-
-    def fill_node_mean_value(self, nid):
-        node = self[nid]
-        if node.is_leaf():
-            result = node.leaf_value()
-        else:
-            result = self.fill_node_mean_value(node.left_child()) * self.stat(
-                node.left_child()).sum_hess
-            result += self.fill_node_mean_value(node.right_child()) * self.stat(
-                node.right_child()).sum_hess
-            result /= self.stat(nid).sum_hess
-        self.node_mean_values_[nid] = result
-        return result
 
     def node_split_type(self, nidx):
         return self.split_types_[nidx]
@@ -420,34 +440,6 @@ class RegTree(TreeModel):
         #       self.param_.size_leaf_vector)
         return nd
 
-    def _delete_node(self, nid):
-        assert nid >= 1, "cannot delete root"
-        pid = self[nid].parent()
-        if nid == self[pid].left_child():
-            self[pid].set_left_child(RegTree.kInvalidNodeId)
-        else:
-            self[pid].set_right_child(RegTree.kInvalidNodeId)
-        self.deleted_nodes_.append(nid)
-        self.nodes_[nid].mark_delete()
-        self.param.num_deleted += 1
-
-    def change_to_leaf(self, rid, value):
-        mssg = "cannot delete a non terminal child"
-        assert self.nodes_[self.nodes_[rid].left_child()].is_leaf(), mssg
-        assert self.nodes_[self.nodes_[rid].right_child()].is_leaf(), mssg
-        self._delete_node(self.nodes_[rid].left_child())
-        self._delete_node(self.nodes_[rid].right_child())
-        self.nodes_[rid].set_leaf(value)
-
-    def collapse_to_leaf(self, rid, value):
-        if self.nodes_[rid].is_leaf():
-            return
-        if not self.nodes_[self.nodes_[rid].left_child()].is_leaf():
-            self.collapse_to_leaf(self.nodes_[rid].left_child(), 0.0)
-        if not self.nodes_[self.nodes_[rid].right_child()].is_leaf():
-            self.collapse_to_leaf(self.nodes_[rid].right_child(), 0.0)
-        self.change_to_leaf(rid, value)
-
     def predict(self, feat, root_id=0):
         pid = self.get_leaf_index(feat, root_id)
         return self[pid].leaf_value()
@@ -457,6 +449,7 @@ class RegTree(TreeModel):
 
     def equal(self, other):
         self._ret = True
+
         def spl(nidx):
             if not self.nodes_[nidx] == other.nodes_[nidx]:
                 self._ret = False
@@ -582,7 +575,7 @@ def unwound_path_sum(unique_path, unique_depth, path_index):
 
 
 class Node:
-    def __init__(self, cleft=None, cright=None, parent=-1,
+    def __init__(self, cleft=-1, cright=-1, parent=-1,
                  split_ind=0, split_cond=None,
                  default_left=True):
         self.parent_ = parent
@@ -592,8 +585,7 @@ class Node:
         self.set_parent(self.parent_)
         self.set_split(split_ind, split_cond, default_left)
 
-        self.sindex_ = None
-        # self.info_ = {'leaf_value': None, 'split_cond': None}
+        self.sindex_ = 0
 
     def left_child(self):
         return self.cleft_
@@ -653,13 +645,10 @@ class Node:
         self.sindex_ = split_ind
         self.info_.split_cond = split_cond
 
-    def set_leaf(self, value, right=None):
+    def set_leaf(self, value, right=-1):
         self.info_.leaf_value = value
         self.cleft_ = RegTree.kInvalidNodeId
-        if right is None:
-            self.cright_ = RegTree.kInvalidNodeId
-        else:
-            self.cright_ = right
+        self.cright_ = right
 
     def mark_delete(self):
         self.sindex_ = RegTree.kDeletedNodeMarker
@@ -724,6 +713,3 @@ if __name__ == '__main__':
 
     print('teto')
     print(3)
-
-
-
