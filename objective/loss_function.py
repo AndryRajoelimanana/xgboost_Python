@@ -1,5 +1,5 @@
 import numpy as np
-from data.data_mat import bst_gpair
+from data_i.data_mat import bst_gpair
 from utils.util import sigmoid, softmax, one_hot_encoding
 
 
@@ -28,13 +28,16 @@ class IObjFunction:
 
 
 class RegLossObj(IObjFunction):
-    def __init__(self, is_classifier):
+    def __init__(self, is_classifier=True):
         self.is_classifier = is_classifier
         self.scale_pos_weight = 1.0
 
     def set_param(self, name, value):
         if name == "scale_pos_weight":
             self.scale_pos_weight = value
+
+    def check_label(self, x):
+        pass
 
     def get_gradient(self, preds, info, it):
         labels = info.labels_
@@ -183,3 +186,116 @@ class SquareErrorLoss(RegLossObj):
             'base score should be in (0,1)'
         base_score = -np.log(1/(base_score - 1))
         return base_score
+
+
+class LinearSquareLoss(RegLossObj):
+
+    def check_label(self, x):
+        return np.full(x.shape, True, dtype=bool)
+
+    def pred_transform(self, x):
+        return x
+
+    def gradient(self, predt, label):
+        return predt - label
+
+    def hessian(self, predt, label):
+        return np.ones_like(predt)
+
+    def prob_to_margin(self, base_score):
+        return base_score
+
+    def default_eval_metric(self):
+        return "rmsle"
+
+    def name(self):
+        return "reg:squaredlerror"
+
+
+class SquareLogError(RegLossObj):
+
+    def check_label(self, x):
+        return x > -1
+
+    def pred_transform(self, x):
+        return x
+
+    def gradient(self, predt, label):
+        ypredi = predt.clip(min=-1 + 1e-6)
+        res = (np.log1p(ypredi) - np.log1p(label))/(ypredi + 1)
+        return res
+
+    def hessian(self, predt, label):
+        ypredi = predt.clip(min=-1 + 1e-6)
+        res = (-np.log1p(ypredi) + np.log1p(label) + 1) / np.power(ypredi+1, 2)
+        res = res.clip(min=1e-6)
+        return res
+
+    def prob_to_margin(self, base_score):
+        return base_score
+
+    def default_eval_metric(self):
+        return "rmsle"
+
+    def name(self):
+        return "reg:squaredlogerror"
+
+
+class LogisticRegression(RegLossObj):
+    def pred_transform(self, x):
+        return sigmoid(x)
+
+    def check_label(self, x):
+        return (x >= 0) & (x <= 1)
+
+    def gradient(self, predt, label):
+        return predt - label
+
+    def hessian(self, predt, label):
+        predt_i = predt * (1.0 - predt)
+        return predt_i.clip(min=1e-16)
+
+    def prob_to_margin(self, base_score):
+        msg = "base_score must be in (0,1) for logistic loss, got: "
+        assert np.all((base_score > 0.0) & (base_score < 1.0)), msg
+        return -np.log(1.0/base_score - 1.0)
+
+    def default_eval_metric(self):
+        return "rmse"
+
+    def name(self):
+        return "reg:logistic"
+
+
+class LogisticClassification(LogisticRegression):
+    def default_eval_metric(self):
+        return "logloss"
+
+    def name(self):
+        return "binary:logistic"
+
+
+class LogisticRaw(LogisticRegression):
+    def pred_transform(self, x):
+        return x
+
+    def gradient(self, predt, label):
+        return sigmoid(predt) - label
+
+    def hessian(self, predt, label):
+        predt = sigmoid(predt)
+        predt_i = predt * (1.0 - predt)
+        return predt_i.clip(min=1e-16)
+
+    def prob_to_margin(self, base_score):
+        return base_score
+
+    def default_eval_metric(self):
+        return "logloss"
+
+    def name(self):
+        return "binary:logitraw"
+
+
+if __name__ == "__main__":
+    pass

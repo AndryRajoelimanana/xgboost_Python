@@ -90,12 +90,12 @@ class ColMaker:
 
         def update(self, gpair, p_fmat, p_tree):
             self.init_data(gpair, p_fmat)
-            self.init_new_node(gpair, p_fmat, p_tree)
+            self.init_new_node(self.qexpand_, gpair, p_fmat, p_tree)
             for depth in range(self.param_.max_depth):
-                self.find_split(self.qexpand_, gpair, p_fmat, info, p_tree)
+                self.find_split(depth, self.qexpand_, gpair, p_fmat, p_tree)
                 self.reset_position(self.qexpand_, p_fmat, p_tree)
                 self.update_queue_expand(p_tree)
-                self.init_new_node(gpair, p_fmat, info, p_tree)
+                self.init_new_node(gpair, p_fmat, p_tree)
                 if len(self.qexpand_) == 0:
                     break
             for i in range(len(self.qexpand_)):
@@ -122,7 +122,7 @@ class ColMaker:
             self.snode_ = []
             self.qexpand_ = [0]
 
-        def init_new_node(self, qexpand, gpair, fmat, info, tree):
+        def init_new_node(self, qexpand, gpair, fmat, tree):
             for i in range(len(self.stemp_)):
                 self.stemp_[i] = [ThreadEntry() for _ in
                                   range(tree.param.num_nodes)]
@@ -268,8 +268,25 @@ class ColMaker:
                     e.best.update(loss_chg, fid, e.last_fvalue + delta,
                                   d_step == -1)
 
-        def find_split(self, qexpand, gpair, p_fmat, info, p_tree):
-            feat_set = self.feat_index
+        def update_solution(self, batch, feat_set, gpair, p_fmat):
+            num_features = len(feat_set)
+            page = batch.get_view()
+            for i in range(num_features):
+                evaluator = self.tree_evaluator_.get_evaluator()
+                fid = feat_set[i]
+                c =
+
+
+
+
+
+        def find_split(self, depth, qexpand, gpair, p_fmat, p_tree):
+            evaluator = self.tree_evaluator_.get_evaluator()
+            feat_set = self.column_sampler_.get_feature_set(depth)
+            p_fmat =
+            for batch in p_fmat.get
+
+
             if self.param_.colsample_bylevel != 1:
                 np.random.shuffle(feat_set)
                 n = self.param_.colsample_bylevel * len(feat_set)
