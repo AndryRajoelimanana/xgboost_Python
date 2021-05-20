@@ -23,8 +23,6 @@ def test_tree(dm):
 
 
 
-
-
 if __name__ == '__main__':
     boston = load_boston()
     data = boston['data']

@@ -1,4 +1,4 @@
-import numpy as np
+import params
 from params import *
 from utils.util import resize
 
@@ -12,6 +12,9 @@ class TreeEvaluator:
         if len(p.monotone_constraints) == 0:
             self.monotone_ = [] * n_features
             self.has_constraint_ = False
+            self.lower_bounds_ = None
+            self.upper_bounds_ = None
+
         else:
             self.monotone_ = p.monotone_constraints
             resize(self.monotone_, n_features, 0)
@@ -48,13 +51,13 @@ class TreeEvaluator:
 class SplitEvaluator:
     def __init__(self, constraints=None, lower_bounds=None, upper_bounds=None,
                  has_constraint=False):
-        self.constraints = constraints
+        self.constraints = constraints if constraints is not None else [None]
         self.has_constraint = has_constraint
         self.lower = lower_bounds
         self.upper = upper_bounds
 
     def calc_split_gain(self, param, nidx, fidx, left, right):
-        constraint = self.constraints[fidx]
+        constraint = 0
         negative_infinity = np.iinfo(int).min
         wleft = self.calc_weight(nidx, param, left)
         wright = self.calc_weight(nidx, param, right)
@@ -71,7 +74,7 @@ class SplitEvaluator:
             return gain if wleft >= wright else negative_infinity
 
     def calc_weight(self, nodeid, param, stats):
-        w = calc_weight(param, stats)
+        w = params.calc_weight(param, stats)
         if not self.has_constraint:
             return w
         if nodeid == TreeEvaluator.kRootParentId:

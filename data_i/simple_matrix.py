@@ -1,9 +1,9 @@
-from data.matrix_csr import SparseCSRMBuilder
+from data_i.matrix_csr import SparseCSRMBuilder
 import numpy as np
-from data.data_io import SparseBatch, RowBatch, ColBatch
+from data_i.data_io import SparseBatch, RowBatch, ColBatch
 from utils.iterator import IIterator
 from utils.util import sample_binary
-from data.dmatrix import DataMatrix
+from data_i.dmatrix import DataMatrix
 from utils.util import resize
 
 

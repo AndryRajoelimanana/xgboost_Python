@@ -360,7 +360,17 @@ class GBTree(GradientBooster):
         return n_trees
 
     def slice(self, layer_begin, layer_end, step, out, out_of_bound):
-        pass
+        layer_trees = self.layer_trees()
+        if layer_end == 0:
+            layer_end = len(self.model_.trees) / layer_trees
+        n_layers = (layer_end - layer_begin) / step
+        out_trees = out.model_.trees
+        resize(out_trees, layer_trees * n_layers, GBTreeModel())
+        out_trees_info = out.model_.tree_info
+        resize(out_trees_info, layer_trees * n_layers, 0)
+        out.model_.param.num_trees = len(out.model_.trees)
+
+
 
     def boosted_rounds(self):
         assert self.tparam_.num_parallel_tree != 0
@@ -368,7 +378,9 @@ class GBTree(GradientBooster):
         return len(self.model_.trees)/self.layer_trees()
 
     def inplace_predict(self):
-        tree_begin, tree_end = self.laye
+        pass
+
+    def predict_batch(self, dmat, out_preds, bools, layer_begin, layer_end):
 
 
 

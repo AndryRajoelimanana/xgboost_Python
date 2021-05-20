@@ -53,13 +53,3 @@ class GenericParameter:
         self.validate_parameters = validate_parameters
         self.n_gpus = 0
 
-
-class LearnerModelParam:
-    def __init__(self, user_param, base_margin, base_score=0.5, num_feature=0,
-                 num_output_group=0):
-
-        self.base_margin
-        self.base_score = base_score
-        self.num_feature = num_feature
-        self.num_output_group = num_output_group
-

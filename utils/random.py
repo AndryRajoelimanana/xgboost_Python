@@ -15,7 +15,7 @@ class ColumnSampler:
         self.feature_set_level_ = {}
 
     def init(self, num_col, feature_weights, colsample_bynode,
-             colsample_bylevel, colsample_bytree, skip_index_0 = False):
+             colsample_bylevel, colsample_bytree, skip_index_0=False):
         self.feature_weights_ = feature_weights
         self.colsample_bylevel_ = colsample_bylevel
         self.colsample_bytree_ = colsample_bytree

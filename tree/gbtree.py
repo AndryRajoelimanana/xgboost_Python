@@ -93,7 +93,6 @@ class GBTree(GradientBooster):
         self.tree_info = []
         self.thread_temp = []
 
-
     def configure(self, cfg):
         pass
 

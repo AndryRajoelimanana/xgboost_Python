@@ -1,13 +1,20 @@
 import numpy as np
 from params import TrainParam, GradStats, SplitEntry, GradientPair
 from utils.util import resize, sample_binary
-from data_i.simple_matrix import DMatrix
+from data_i.data import DMatrix
 from sklearn import datasets
 from tree.split_evaluator import TreeEvaluator
 from utils.random import ColumnSampler
+from objective.loss_function import LinearSquareLoss
+from multiprocessing import Process
+import time
+from data_i.data import CSRAdapter, SortedCSCPage
+from scipy.sparse import csr_matrix, csc_matrix
+
 
 rt_eps = 1e-5
 rt_2eps = 2e-5
+kRtEps = 1e-6
 
 
 class ColMakerTrainParam(TrainParam):
@@ -20,7 +27,6 @@ class ColMakerTrainParam(TrainParam):
                 (default_direction == 0) and (
                 col_density < self.opt_dense_col and not indicator))
 
-    @staticmethod
     def need_backward_search(self, default_direction):
         return default_direction != 2
 
@@ -31,8 +37,9 @@ class ColMaker:
     def __init__(self, data):
         self.param_ = ColMakerTrainParam()
         self.colmaker_train_param_ = ColMakerTrainParam()
-        self.data_ = data
-        self.column_densities_ = self.lazy_get_column_density()
+        # self.data_ = data
+        # self.column_densities_ = self.lazy_get_column_density()
+        self.column_densities_ = [1.0]*12
         self.interaction_constraints_ = ''
 
     def set_param(self, name, value):
@@ -41,15 +48,14 @@ class ColMaker:
     def lazy_get_column_density(self):
         return self.data_.getnnz(axis=0) / self.data_.shape[0]
 
-    def update(self, gpair, p_fmat, info, trees):
-        GradStats.check_info(info)
+    def update(self, gpair, p_fmat, trees):
         lr = self.param_.learning_rate
         self.param_.learning_rate = lr / len(trees)
-        for tree in range(trees):
+        for tree in trees:
             builder = ColMaker.Builder(self.param_, self.colmaker_train_param_,
                                        self.interaction_constraints_,
                                        self.column_densities_)
-            builder.update(gpair, p_fmat, info, trees[i])
+            builder.update(gpair, p_fmat, tree)
 
     class ThreadEntry:
         def __init__(self, param):
@@ -93,21 +99,22 @@ class ColMaker:
             self.init_new_node(self.qexpand_, gpair, p_fmat, p_tree)
             for depth in range(self.param_.max_depth):
                 self.find_split(depth, self.qexpand_, gpair, p_fmat, p_tree)
+            #     self.find_split(depth, self.qexpand_, gpair, p_fmat, p_tree)
                 self.reset_position(self.qexpand_, p_fmat, p_tree)
-                self.update_queue_expand(p_tree)
-                self.init_new_node(gpair, p_fmat, p_tree)
-                if len(self.qexpand_) == 0:
-                    break
-            for i in range(len(self.qexpand_)):
-                nid = self.qexpand_[i]
-                p_tree[nid].set_leaf(self.snode_[nid].weight *
-                                     self.param_.learning_rate)
-            for nid in range(p_tree.param_.num_nodes):
-                p_tree.stat(nid).loss_chg = self.snode_[nid].best.loss_chg
-                p_tree.stat(nid).base_weight = self.snode_[nid].weight
-                p_tree.stat(nid).sum_hess = self.snode_[nid].stats_.sum_hess
-                self.snode_[nid].stats_.set_leaf_vec(self.param_,
-                                                     p_tree.leafvec(nid))
+            #     self.update_queue_expand(p_tree, self.qexpand_)
+            #     self.init_new_node(self.qexpand_, gpair, p_fmat, p_tree)
+            #     if len(self.qexpand_) == 0:
+            #         break
+            # for i in range(len(self.qexpand_)):
+            #     nid = self.qexpand_[i]
+            #     p_tree[nid].set_leaf(self.snode_[nid].weight *
+            #                          self.param_.learning_rate)
+            # for nid in range(p_tree.param.num_nodes):
+            #     p_tree.stat(nid).loss_chg = self.snode_[nid].best.loss_chg
+            #     p_tree.stat(nid).base_weight = self.snode_[nid].weight
+            #     p_tree.stat(nid).sum_hess = self.snode_[nid].stats_.sum_hess
+            #     self.snode_[nid].stats_.set_leaf_vec(self.param_,
+            #                                          p_tree.leafvec(nid))
 
         def init_data(self, gpair, fmat):
 
@@ -126,14 +133,14 @@ class ColMaker:
             for i in range(len(self.stemp_)):
                 self.stemp_[i] = [ThreadEntry() for _ in
                                   range(tree.param.num_nodes)]
-            self.snode_ = [NodeEntry() for _ in range(tree.param_.num_nodes)]
+            self.snode_ = [NodeEntry() for _ in range(tree.param.num_nodes)]
             info = fmat.info()
             ndata = info.num_row_
             for ridx in range(ndata):
                 tid = 0
                 if self.position_[ridx] < 0:
                     continue
-                self.stemp_[tid][self.position_[ridx]].stats_.add(gpair[ridx])
+                self.stemp_[tid][self.position_[ridx]].stats.add(gpair[ridx])
 
             for nid in qexpand:
                 stats = GradStats()
@@ -202,13 +209,14 @@ class ColMaker:
                 e.stats.add(gstats)
                 e.last_fvalue = fvalue
 
-        def enumerate_split(self, data, d_step, fid, gpair, temp, evaluator):
+        def enumerate_split(self, data, d_step, fid, gpair, tid, evaluator):
 
             qexpand = self.qexpand_
+            temp = self.stemp_[tid]
             for nid in qexpand:
                 temp[nid].stats = GradStats()
-            c = GradStats
-            kBuffer = 32
+            c = GradStats()
+            kBuffer = len(data)
             buf_position = [0]*kBuffer
             buf_gpair = [GradientPair() for _ in range(kBuffer)]
             for i in range(len(data)):
@@ -224,49 +232,26 @@ class ColMaker:
                                         it.fvalue, d_step,
                                         fid, c, temp, evaluator)
 
-
-
-            c = GradStats(self.param_)
-            if d_step == 1:
-                to_loop = np.arange(len(data))
-            elif d_step == -1:
-                to_loop = np.arange(len(data) - 1, -1, -1)
-            for it_i in to_loop:
-                it = data[it_i]
-                ridx = it.index
-                nid = self.position_[ridx]
-                if nid < 0:
-                    continue
-                fvalue = it.get_fvalue
+            for nid in qexpand:
                 e = temp[nid]
-                if e.stats_.empty():
-                    e.stats_.add_stats(gpair, info, ridx)
-                    e.last_fvalue = fvalue
-                else:
-                    if np.abs(fvalue - e.last_fvalue) > rt_2eps and \
-                            e.stats_.sum_hess >= self.param_.min_child_weight:
-                        c.set_substract(self.snode_[nid].stats, e.stats_)
-                        if c.sum_hess >= self.param_.min_child_weight:
-                            loss_chg = e.stats_.calc_gain(self.param_) + \
-                                       c.calc_gain(self.param_) - \
-                                       self.snode_[nid].root_gain
-                            e.best.update(loss_chg, fid,
-                                          (fvalue + e.last_fvalue) * 0.5,
-                                          d_step == -1)
-                    e.stats_.add_stats(gpair, info, ridx)
-                    e.last_fvalue = fvalue
-            for i in range(len(qexpand)):
-                nid = qexpand[i]
-                e = temp[nid]
-                c.set_substract(self.snode_[nid].stats, e.stats_)
-                if (e.stats_.sum_hess >= self.param_.min_child_weight) and \
+                c.set_substract(self.snode_[nid].stats, e.stats)
+                if (e.stats.sum_hess >= self.param_.min_child_weight) and \
                         (c.sum_hess >= self.param_.min_child_weight):
-                    loss_chg = e.stats_.calc_gain(self.param_) + \
-                               c.calc_gain(self.param_) - \
-                               self.snode_[nid].root_gain
-                    delta = rt_eps if d_step == 1 else -rt_eps
-                    e.best.update(loss_chg, fid, e.last_fvalue + delta,
-                                  d_step == -1)
+                    gap = np.abs(e.last_fvalue) + kRtEps
+                    delta = gap if d_step == 1 else -gap
+                    if d_step == -1:
+                        new_loss = evaluator.calc_split_gain(self.param_, nid,
+                                                             fid, c, e.stats)
+                        loss_chg = new_loss - self.snode_[nid].root_gain
+                        e.best.update(loss_chg, fid, e.last_fvalue + delta,
+                                      d_step == -1, c, e.stats)
+                    else:
+                        new_loss = evaluator.calc_split_gain(self.param_, nid,
+                                                             fid, e.stats, c)
+                        loss_chg = new_loss - self.snode_[nid].root_gain
+                        e.best.update(loss_chg, fid, e.last_fvalue + delta,
+                                      d_step == -1, e.stats, c)
+                self.stemp_[tid][nid] = e
 
         def update_solution(self, batch, feat_set, gpair, p_fmat):
             num_features = len(feat_set)
@@ -274,56 +259,75 @@ class ColMaker:
             for i in range(num_features):
                 evaluator = self.tree_evaluator_.get_evaluator()
                 fid = feat_set[i]
-                c =
-
-
-
-
+                tid = 0
+                c = page[fid]
+                len_c = len(c)
+                ind = (len_c != 0) and (c[0].fvalue == c[-1].fvalue)
+                if self.colmaker_train_param_.need_forward_search(
+                        self.param_.default_direction,
+                        self.column_densities_[fid], ind):
+                    self.enumerate_split(c, +1, fid, gpair, tid,
+                                         evaluator)
+                if self.colmaker_train_param_.need_backward_search(
+                        self.param_.default_direction):
+                    c.reverse()
+                    self.enumerate_split(c, -1, fid, gpair,
+                                         tid, evaluator)
 
         def find_split(self, depth, qexpand, gpair, p_fmat, p_tree):
             evaluator = self.tree_evaluator_.get_evaluator()
             feat_set = self.column_sampler_.get_feature_set(depth)
-            p_fmat =
-            for batch in p_fmat.get
 
+            page = p_fmat.sparse_page_.get_transpose(p_fmat.info().num_col_)
+            batch = SortedCSCPage(page)
+            self.update_solution(batch, feat_set, gpair, p_fmat)
+            # for batch in p_fmat.get
 
-            if self.param_.colsample_bylevel != 1:
-                np.random.shuffle(feat_set)
-                n = self.param_.colsample_bylevel * len(feat_set)
-                assert n > 0, 'colsample_bylevel is too small'
-                resize(feat_set, n)
-            iter_i = p_fmat.col_iterator(feat_set)
-            while iter_i.next():
-                batch = iter_i.value()
-                nsize = batch.size
-                # batch_size = np.maximum(nsize/(32*self.nthread), 1)
-                for i in range(nsize):
-                    fid = batch.col_index[i]
-                    tid = 0
-                    c = batch[i]
-                    if self.param_.need_forward_search(
-                            p_fmat.get_col_density(fid)):
-                        self.enumerate_split(c.data_[0:c.length], 1, fid, gpair,
-                                             info, self.stemp_[tid])
-                    if self.param_.need_backward_search(
-                            p_fmat.get_col_density(fid)):
-                        self.enumerate_split(c.data_[0:c.length], -1, fid,
-                                             gpair,
-                                             info, self.stemp_[tid])
-
-            for i in range(len(qexpand)):
-                nid = qexpand[i]
-                e = self.snode_[nid]
-                for tid in range(self.nthread):
-                    e.best.update_e(self.stemp_[tid][nid].best)
-                if e.best.loss_chg > rt_eps:
-                    p_tree.add_child(nid)
-                    p_tree[nid].set_split(e.best.split_index(),
-                                          e.best.split_value,
-                                          e.best.default_left())
-                else:
-                    p_tree[nid].set_leaf(e.weight * self.param_.learning_rate)
-
+#
+#         def find_split(self, depth, qexpand, gpair, p_fmat, p_tree):
+#             evaluator = self.tree_evaluator_.get_evaluator()
+#             feat_set = self.column_sampler_.get_feature_set(depth)
+#             p_fmat =
+#             for batch in p_fmat.get
+#
+#
+#             if self.param_.colsample_bylevel != 1:
+#                 np.random.shuffle(feat_set)
+#                 n = self.param_.colsample_bylevel * len(feat_set)
+#                 assert n > 0, 'colsample_bylevel is too small'
+#                 resize(feat_set, n)
+#             iter_i = p_fmat.col_iterator(feat_set)
+#             while iter_i.next():
+#                 batch = iter_i.value()
+#                 nsize = batch.size
+#                 # batch_size = np.maximum(nsize/(32*self.nthread), 1)
+#                 for i in range(nsize):
+#                     fid = batch.col_index[i]
+#                     tid = 0
+#                     c = batch[i]
+#                     if self.param_.need_forward_search(
+#                             p_fmat.get_col_density(fid)):
+#                         self.enumerate_split(c.data_[0:c.length], 1, fid, gpair,
+#                                              info, self.stemp_[tid])
+#                     if self.param_.need_backward_search(
+#                             p_fmat.get_col_density(fid)):
+#                         self.enumerate_split(c.data_[0:c.length], -1, fid,
+#                                              gpair,
+#                                              info, self.stemp_[tid])
+#
+#             for i in range(len(qexpand)):
+#                 nid = qexpand[i]
+#                 e = self.snode_[nid]
+#                 for tid in range(self.nthread):
+#                     e.best.update_e(self.stemp_[tid][nid].best)
+#                 if e.best.loss_chg > rt_eps:
+#                     p_tree.add_child(nid)
+#                     p_tree[nid].set_split(e.best.split_index(),
+#                                           e.best.split_value,
+#                                           e.best.default_left())
+#                 else:
+#                     p_tree[nid].set_leaf(e.weight * self.param_.learning_rate)
+#
         def reset_position(self, qexpand, p_fmat, tree):
             rowset = p_fmat.buffered_rowset()
             ndata = len(rowset)
@@ -362,6 +366,8 @@ class ColMaker:
                                 self.position_[ridx] = tree[nid].left_child()
                             else:
                                 self.position_[ridx] = tree[nid].right_child()
+
+
 
         def setup_position(self, gpair, fmat):
             self.position_ = [0] * len(gpair)
@@ -404,7 +410,7 @@ class ThreadEntry:
     def __init__(self, last_fvalue=0):
         self.stats = GradStats()
         self.last_fvalue = last_fvalue
-        self.best = None
+        self.best = SplitEntry()
 
 
 class NodeEntry:
@@ -418,11 +424,51 @@ class NodeEntry:
 if __name__ == "__main__":
     # data_ = pd.read_csv('~/projects/Learning/OCR_text/opencv-text-detection'
     #                   '/Python_script/data_/covid.csv')
-    diabetes = datasets.load_diabetes()
-    X, y = diabetes.data, diabetes.target
-    dmat = DMatrix(X, label=y)
-    dmat.handle.fmat().init_col_access()
-    print(0)
+    # diabetes = datasets.load_diabetes()
+    # X, y = diabetes.data, diabetes.target
+    # dmat = DMatrix(X, label=y)
+    # dmat.handle.fmat().init_col_access()
+    # print(0)
+    import xgboost as xgb
+
+    boston = datasets.load_boston()
+    data = boston['data']
+    X = data[:, :-1]
+    y = data[:, -1]
+
+    x_csr = csr_matrix(X)
+    row_ptr = x_csr.indptr
+    feature_idx = x_csr.indices
+    values = x_csr.data
+    num_rows, num_features = x_csr.shape
+    num_elements = x_csr.nnz
+
+    adapt = CSRAdapter(row_ptr, feature_idx, values, num_rows, num_elements,
+                       num_features)
+
+    dm = DMatrix(x_csr).create()
+
+    # dm = DMatrix(x_csr)
+    # dm = DMatrix(X, label=y)
+
+    gg = LinearSquareLoss()
+    base_score = 0.5
+    base_s = np.full(y.shape, base_score)
+    grad = gg.gradient(base_s, y)
+    hess = gg.hessian(base_s, y)
+    gpair = []
+    for i in range(len(grad)):
+        gpair.append(GradientPair(grad[i], hess[i]))
+
+    col = ColMaker(dm)
+
+    from tree.tree import RegTree
+    trees = [RegTree()]
+
+    col.update(gpair, dm, trees)
+    print('done')
+
+
 
 # class Iupdater:
 #     def __init__(self):

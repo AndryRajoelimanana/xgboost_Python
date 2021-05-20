@@ -1,6 +1,7 @@
 import numpy as np
 from utils.util import resize
 from enum import Enum
+# from data_i.simple_dmatrix import SimpleDMatrix
 
 
 # src/data_/data_.c
@@ -38,11 +39,11 @@ class BoosterInfo:
 class MetaInfo:
     kNumField = 11
 
-    def __init__(self, num_row=0, num_col=0):
+    def __init__(self, num_row=0, num_col=0, num_nonzero=0):
         self.info = BoosterInfo()
         self.num_row_ = num_row
         self.num_col_ = num_col
-        self.num_nonzero_ = 0
+        self.num_nonzero_ = num_nonzero
         self.labels_ = self.group_ptr_ = self.weights_ = self.base_margin_ = []
         self.labels_lower_bound_ = self.labels_upper_bound_ = []
         self.feature_type_names = self.feature_names = self.feature_types = []
@@ -56,11 +57,11 @@ class MetaInfo:
         return self.info.num_col
 
     def clear(self):
+        self.num_row_ = self.num_col_ = self.num_nonzero_ = 0
         self.labels_.clear()
         self.group_ptr_.clear()
         self.weights_.clear()
         self.base_margin_.clear()
-        self.info = BoosterInfo(0, 0)
 
     def get_weight(self, i):
         if len(self.weights_) != 0:
@@ -174,10 +175,10 @@ class Entry:
 
     @staticmethod
     def cmp_value(a, b):
-        return a.get_fvalue < b.get_fvalue
+        return a.fvalue < b.fvalue
 
     def __eq__(self, other):
-        return (self.index == other.index) and (self.fvalue == other.get_fvalue)
+        return (self.index == other.index) and (self.fvalue == other.fvalue)
 
 
 class BatchParam:
@@ -193,9 +194,9 @@ class BatchParam:
 
 
 class HostSparsePageView:
-    def __init__(self):
-        self.offset = []
-        self.data = []
+    def __init__(self, offset=None, data=None):
+        self.offset = offset if offset is not None else [0]
+        self.data = data if data is not None else []
 
     def __getitem__(self, item):
         return self.data[self.offset[item]:self.offset[item + 1]]
@@ -205,15 +206,15 @@ class HostSparsePageView:
 
 
 class SparsePage:
-    def __init__(self):
-        self.offset = []
-        self.data = []
+    def __init__(self, offset=None, data=None):
+        self.offset = offset if offset else [0]
+        self.data = data if data else []
         self.base_rowid = 0
 
     def get_view(self):
-        return self.offset, self.data
+        return HostSparsePageView(self.offset, self.data)
 
-    def Size(self):
+    def size(self):
         return 0 if len(self.offset) == 0 else len(self.offset) - 1
 
     def clear(self):
@@ -225,19 +226,45 @@ class SparsePage:
         self.base_rowid = row_id
 
     def get_transpose(self, num_columns):
-        pass
+        page = self.get_view()
+        builder = ParallelGroupBuilder([],[])
+        builder.init_budget(num_columns, 1)
+        for i in range(self.size()):
+            tid = 0
+            inst = page[i]
+            for entry in inst:
+                builder.add_budget(entry.index, tid)
+        builder.init_storage()
+        for i in range(self.size()):
+            tid = 0
+            inst = page[i]
+            for entry in inst:
+                builder.push(entry.index, Entry(self.base_rowid+i,
+                                                entry.fvalue), tid)
+        return SparsePage(builder.rptr_, builder.data_)
 
     def sort_row(self):
-        ncol = self.Size()
-        for i in range(ncol - 1):
+        ncol = self.size()
+        for i in range(ncol):
             ndata = self.data[self.offset[i]:self.offset[i + 1]]
             sdata = sorted(ndata, key=lambda x: x.fvalue)
             self.data[self.offset[i]:self.offset[i + 1]] = sdata
 
-    def push(self, batch):
-        self.data += batch.data
-        top = self.offset[-1]
-        self.offset += [i + top for i in batch.offset]
+    def push(self, batch, missing=None, nthread=None):
+        max_columns_local = 0
+        if isinstance(batch, SparsePage):
+            self.data += batch.data
+            top = self.offset[-1]
+            self.offset += [i + top for i in batch.offset]
+        elif isinstance(batch, CSRAdapterBatch):
+            for i in range(batch.num_rows_):
+                line = batch.getline(i)
+                for j in range(line.size()):
+                    element = line.get_element(j)
+                    max_columns_local = max(max_columns_local, element.column_idx)
+                    self.data.append(Entry(element.column_idx, element.value))
+            self.offset = batch.row_ptr_
+        return max_columns_local
 
     def pushCSC(self, batch):
         if batch.data.empty():
@@ -269,13 +296,65 @@ class SparsePage:
         self.offset = offset
 
 
-class CSCPage(SparsePage):
-    def __init__(self, page):
-        super().__init__()
-        self.page = page
-
-
 class SortedCSCPage(SparsePage):
+
+    def __init__(self, page=None):
+        if page is not None:
+            offs = page.offset
+            page.sort_row()
+            dat = page.data
+        else:
+            offs = dat = None
+        super(SortedCSCPage, self).__init__(offs, dat)
+
+
+class ParallelGroupBuilder:
+    def __init__(self, p_rptr, p_data, base_row_offset = 0):
+        self.rptr_ = p_rptr
+        self.data_ = p_data
+        self.base_row_offset_ = base_row_offset
+
+    def init_budget(self, max_key, nthread):
+        self.thread_rptr_ = [[] for _ in range(nthread)]
+        for i in range(nthread):
+            self.thread_rptr_[i] = [0]*max(max_key -
+                                           min(max_key,
+                                               self.base_row_offset_), 0)
+
+    def add_budget(self, key, threadid, nelem=1):
+        trptr = self.thread_rptr_[threadid]
+        offset_key = key - self.base_row_offset_
+        if len(trptr) < offset_key + 1:
+            resize(self.thread_rptr_[threadid], offset_key+1, 0)
+        self.thread_rptr_[threadid][offset_key] += nelem
+
+    def init_storage(self):
+        rptr_fill_value = 0 if len(self.rptr_)==0 else self.rptr_[-1]
+        for tid in range(len(self.thread_rptr_)):
+            if len(self.rptr_) <= len(self.thread_rptr_[tid]) + \
+                    self.base_row_offset_:
+                resize(self.rptr_, len(self.thread_rptr_[tid]) +
+                       self.base_row_offset_ + 1, rptr_fill_value)
+        count = 0
+        for i in range(self.base_row_offset_, len(self.rptr_)-1):
+            for tid in range(len(self.thread_rptr_)):
+                trptr = self.thread_rptr_[tid]
+                if i < len(trptr) + self.base_row_offset_:
+                    thread_count = trptr[i-self.base_row_offset_]
+                    self.thread_rptr_[tid][i-self.base_row_offset_] = count +\
+                                                                      self.rptr_[-1]
+                    count += thread_count
+            self.rptr_[i+1] += count
+        resize(self.data_, self.rptr_[-1])
+
+    def push(self, key, value, threadid):
+        offset_key = key - self.base_row_offset_
+        rp = self.thread_rptr_[threadid][offset_key]
+        self.data_[rp] = value
+        self.thread_rptr_[threadid][offset_key] += 1
+
+
+class CSCPage(SparsePage):
     def __init__(self, page):
         super().__init__()
         self.page = page
@@ -307,30 +386,174 @@ class BatchSet:
         return None
 
 
+class COOTuple:
+    def __init__(self, row_idx=0, column_idx=0, value=0):
+        self.row_idx = row_idx
+        self.column_idx = column_idx
+        self.value = value
+
+
+class CSRAdapterBatch:
+    def __init__(self, row_ptr, feature_idx, values, num_rows):
+        self.row_ptr_ = row_ptr
+        self.feature_idx_ = feature_idx
+        self.num_rows_ = num_rows
+        self.values_ = values
+
+    def size(self):
+        return self.num_rows_
+
+    def getline(self, idx):
+        beg = self.row_ptr_[idx]
+        end = self.row_ptr_[idx + 1]
+        return CSRAdapterBatch.Line(idx, end - beg, self.feature_idx_[beg:end],
+                                    self.values_[beg:end])
+
+    class Line:
+        def __init__(self, row_idx, size, feature_idx, values):
+            self.row_idx_ = row_idx
+            self.values_ = values
+            self.feature_idx_ = feature_idx
+            self.size_ = size
+
+        def size(self):
+            return self.size_
+
+        def get_element(self, idx):
+            return COOTuple(self.row_idx_, self.feature_idx_[idx], self.values_[
+                idx])
+
+
+class CSRAdapter:
+    def __init__(self, row_ptr, feature_idx, values, num_rows, num_elements,
+                 num_features):
+        self.batch_ = CSRAdapterBatch(row_ptr, feature_idx, values, num_rows)
+        self.num_rows_ = num_rows
+        self.num_columns_ = num_features
+
+    def value(self):
+        return self.batch_
+
+    def num_rows(self):
+        return self.num_rows_
+
+    def num_columns(self):
+        return self.num_columns_
+
+
+class CSRArrayAdapterBatch:
+    def __init__(self, indptr, indices, values):
+        self.indptr_ = indptr
+        self.indices_ = indices
+        self.values_ = values
+
+    class Line:
+        def __init__(self, indices, values, ridx):
+            self.ridx_ = ridx
+            self.indices_ = indices
+            self.values_ = values
+
+        def get_element(self, idx):
+            return COOTuple(self.ridx_, self.indices_[idx], self.values_[idx])
+
+        def size(self):
+            return
+
+
+class CSCAdapter:
+    def __init__(self, data):
+        self.batch_ = data
+        r, c = data.shape
+        self.indptr_ = data.indptr
+        self.indices_ = data.indices
+        self.values_ = data.data
+
+        self.num_rows_ = r
+        self.num_cols_ = c
+
+    def value(self):
+        return self.batch_.data
+
+    def num_rows(self):
+        return self.num_rows_
+
+    def num_columns(self):
+        return self.num_cols_
+
+
 class DMatrix:
-    def __init__(self, begin_iter):
-        pass
+    def __init__(self, csr_mat, label=None,
+                 weight=None,
+                 base_margin=None,
+                 missing=None,
+                 silent=False,
+                 feature_names=None,
+                 feature_types=None,
+                 nthread=None,
+                 group=None,
+                 qid=None,
+                 label_lower_bound=None,
+                 label_upper_bound=None,
+                 feature_weights=None,
+                 enable_categorical=False):
+        self.data = csr_mat
+        self.missing = missing if missing is not None else np.nan
+        self.nthread = nthread if nthread is not None else -1
+        self.handle = self.create()
+        self.silent = silent
+        self.info_ = MetaInfo()
+        self.params = {'label': label, 'weight': weight,
+                       'base_margin': base_margin,
+                       'group': group, 'qid': qid,
+                       'label_lower_bound': label_lower_bound,
+                       'label_upper_bound': label_upper_bound,
+                       'feature_names': feature_names,
+                       'feature_types': feature_types,
+                       'feature_weights': feature_weights}
 
     def info(self):
-        pass
+        return self.info_
 
-    def set_info(self, key, val):
-        self.info().set_info(key, val)
+    def set_info(self):
+        for k, v in self.params.items():
+            if v:
+                self.handle.info().set_info(k, v)
 
     def GetThreadLocal(self):
         pass
 
-    def GetBatches(self, param={}):
+    def get_batches_sp(self, param={}):
+        return self.get_row_batches()
+
+    def get_batches_csc(self, param={}):
+        return self.get_column_batches()
+
+    def get_row_batches(self):
+        pass
+
+    def get_column_batches(self):
+        pass
+
+    def page_exists(self):
         return
 
     def SingleColBlock(self):
         pass
 
     def is_dense(self):
-        return self.info().num_non_zero_ == self.info().num_row_ * self.info().num_col_
+        return self.info().num_nonzero_ == self.info().num_row_ * self.info().num_col_
 
-    def create(self, iters, proxy, reset, next, missing, nthread, max_bin):
-        pass
+    def create(self):
+        x_csr = self.data
+        row_ptr = x_csr.indptr
+        feature_idx = x_csr.indices
+        values = x_csr.data
+        num_rows, num_features = x_csr.shape
+        num_elements = x_csr.nnz
+
+        adapter = CSRAdapter(row_ptr, feature_idx, values, num_rows,
+                            num_elements, num_features)
+        return SimpleDMatrix(adapter, self.missing, self.nthread)
 
     def load_binary(self, buffer):
         pass
@@ -343,21 +566,22 @@ class GetBuffer:
                          4: np.uint64, 5: str}
 
     def get_b(self, beg, dtypes):
-        return self.buf[beg:beg + size].decode('utf-8'), beg + size
+        pass
+        # return self.buf[beg:beg + size].decode('utf-8'), beg + size
 
     def get_int(self, beg, size=4, gg='little'):
         return int.from_bytes(self.buf[beg:beg + size], gg), beg + size
 
     def get_scalar(self, start_idx, dtypes):
         s_dtype = np.zeros(1, dtype=dtypes).itemsize
-        return np.frombuffer(self.buf[start_idx:start_idx+s_dtype],
+        return np.frombuffer(self.buf[start_idx:start_idx + s_dtype],
                              dtype=dtypes)[0]
 
     def get_vector(self, start_idx, dtypes, nrow):
         s_dtype = np.zeros(1, dtype=dtypes).itemsize
         if nrow == 0:
             return np.zeros(0, dtype=dtypes)
-        data = np.frombuffer(self.buf[start_idx:start_idx+s_dtype*nrow],
+        data = np.frombuffer(self.buf[start_idx:start_idx + s_dtype * nrow],
                              dtype=dtypes)
         return data
 
@@ -367,13 +591,13 @@ class GetBuffer:
         names = self.buf[start:end_name]
         dtypes_int = self.buf[end_name]
         dtypes = self.datatype[dtypes_int]
-        is_scalar = self.buf[end_name+1] == 1
+        is_scalar = self.buf[end_name + 1] == 1
         if is_scalar:
-            v = self.get_scalar(end_name+2, dtypes)
+            v = self.get_scalar(end_name + 2, dtypes)
         else:
             nrow = int.from_bytes(self.buf[end_name + 2:end_name + 10],
                                   'little')
-            v = self.get_vector(end_name+18,  dtypes, nrow)
+            v = self.get_vector(end_name + 18, dtypes, nrow)
         return names, v
 
     def to_dict(self):
@@ -383,6 +607,78 @@ class GetBuffer:
             nn, v = self.get_value(k)
             dict_dm[k] = v
         return dict_dm
+
+
+kAdapterUnknownSize = np.iinfo(int).max
+
+
+class SimpleDMatrix(DMatrix):
+    kMagic = 0xffffab01
+    kPageSize = 32 << 12
+
+    def __init__(self, adapter, missing=0, nthread=1):
+        # super().__init__(None)
+        self.adapter = adapter
+        self.sparse_page_ = SparsePage()
+        self.info_ = MetaInfo()
+
+        nthread_original = 1
+        qids = []
+        default_max = np.iinfo(np.uint()).max
+        last_group_id = default_max
+        group_size = 0
+
+        offset_vec = self.sparse_page_.offset
+        data_vec = self.sparse_page_.data
+        inferred_num_columns = 0
+        total_batch_size = 0
+
+        batch = adapter.value()
+        batch_max_columns = self.sparse_page_.push(batch)
+        inferred_num_columns = max(batch_max_columns, inferred_num_columns)
+        total_batch_size += batch.size()
+
+        if adapter.num_columns() == kAdapterUnknownSize:
+            self.info_.num_col_ = inferred_num_columns
+        else:
+            self.info_.num_col_ = adapter.num_columns()
+
+        if adapter.num_rows() == kAdapterUnknownSize:
+            pass
+        else:
+            if len(self.sparse_page_.offset) == 0:
+                self.sparse_page_.offset = [0]
+            while len(self.sparse_page_.offset) - 1 < adapter.num_rows():
+                self.sparse_page_.offset.append(self.sparse_page_.offset[-1])
+            self.info_.num_row_ = adapter.num_rows()
+
+        self.info_.num_nonzero_ = len(self.sparse_page_.data)
+
+    def info(self):
+        return self.info_
+
+    def single_col_block(self):
+        return True
+
+    def sparse_page_exists(self):
+        return True
+
+    def slice(self, ridxs):
+        out = SimpleDMatrix()
+        out_page = out.sparse_page_
+        for page in self.get_batches_sp():
+            batch = page.GetView()
+            h_data = out_page.data
+            h_offset = out_page.offset
+            rptr = 0
+            for ridx in ridxs:
+                inst = batch[ridx]
+                rptr += len(inst)
+                h_data += inst
+                h_offset += rptr
+            out.info_ = self.info().slice(ridxs)
+            out.info_.num_nonzero_ = h_offset[-1]
+        return out
 
 
 if __name__ == "__main__":
@@ -398,3 +694,26 @@ if __name__ == "__main__":
         pp[offset[i]:offset[i + 1]] = sorted(ndata, key=lambda x: x.fvalue)
     for i in range(8):
         print(pp[i].fvalue)
+
+    from sklearn.datasets import load_boston
+    from scipy.sparse import csr_matrix
+
+    boston = load_boston()
+    data = boston['data']
+    X = data[:, :-1]
+    y = data[:, -1]
+    x_csr = csr_matrix(X)
+    row_ptr = x_csr.indptr
+    feature_idx = x_csr.indices
+    values = x_csr.data
+    num_rows, num_features = x_csr.shape
+    num_elements = x_csr.nnz
+
+    adapt = CSRAdapter(row_ptr, feature_idx, values, num_rows, num_elements,
+                       num_features)
+
+    nnn = DMatrix(x_csr).create()
+    page = nnn.sparse_page_.get_transpose(nnn.info().num_col_)
+    sorted_csc = SortedCSCPage(page)
+    print(0)
+
