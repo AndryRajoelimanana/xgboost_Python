@@ -24,11 +24,9 @@ def train(params, dtrain, num_boost_round=10, evals=(), obj=None, feval=None,
         bst.update(dtrain, i, obj)
 
 
-
-
 class Booster:
     # def __init__(self, data, obj_fn=None, base_score=0.5, num_boost_round=2):
-    def __init__(self, param=None, cache=(), model_file=None):
+    def __init__(self, param={}, cache=(), model_file=None):
 
         self.data = data
         self.mparam = GBTreeModelParam()
@@ -47,18 +45,23 @@ class Booster:
         # initial
         self.set_gpair(base_score)
 
+    def set_param(self, params, value=None):
+        for k, v in params.items():
+            self.params
+
+
     def set_gpair(self, pred=0.5):
         if isinstance(pred, float) or isinstance(pred, int):
             pred = np.full(self.data.shape[0], pred)
         self.grad = self.obj_.gradient(pred, y)
         self.hess = self.obj_.hessian(pred, y)
 
-    def update(self):
+    def update(self, train, i, obj=None):
         trees = [RegTree() for _ in range(self.num_boost_round)]
         data = self.data
         for tree in trees:
             colmaker = ColMaker()
-            colmaker.update(grad0, hess0, X, trees0)
+            colmaker.update(grad0, hess0, X, tree)
 
         # for depth in range(self.mparam.)
 
@@ -74,12 +77,12 @@ class ColMaker:
     def update(self, grad, hess, fmat, trees):
         lr = self.param_.learning_rate
         self.param_.learning_rate = lr / len(trees)
-        for tree in trees:
-            param = self.param_
-            cparam = self.colmaker_train_param_
-            builder = ColMaker.Builder(param, cparam)
-            builder.update(grad, hess, fmat, tree)
-            self.build = builder
+        # for tree in trees:
+        param = self.param_
+        cparam = self.colmaker_train_param_
+        builder = ColMaker.Builder(param, cparam)
+        builder.update(grad, hess, fmat, trees)
+        self.build = builder
 
     class Builder:
         def __init__(self, param, cparam):

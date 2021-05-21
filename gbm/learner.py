@@ -6,7 +6,6 @@ from gbm.gbtree import GBTree
 from objective.loss_function import LinearSquareLoss
 
 
-
 class Learner:
     def __init__(self):
         self.obj_ = None
@@ -16,6 +15,12 @@ class Learner:
 
     def configure(self):
         pass
+
+    def allow_lazy_check_point(self):
+        self.gbm_.allow_lazy_check_point()
+
+    def create(self, cache):
+        return LearnerImpl(cache)
 
 
 class LearnerConfiguration(Learner):
