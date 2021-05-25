@@ -1,17 +1,31 @@
 import numpy as np
 from data_i.data_mat import bst_gpair
 from utils.util import sigmoid, softmax, one_hot_encoding
+from param.generic_param import GenericParameter
 
 
-class IObjFunction:
+class ObjFunction:
     """
     IObjFunction xgboost.learner : learner/objective.h
     interface
     """
+    # def __init__(self):
+        # self.tparam_ = GenericParameter()
+
+    def create(self, name):
+        dict_obj = {"multi:softprob": SoftmaxMultiClassObj(True),
+                    "multi:softmax": SoftmaxMultiClassObj(False),
+                    "reg:squaredlerror": LinearSquareLoss()
+                    }
+        return dict_obj[name]
+    
+    def configure(self, args):
+        pass
+        
     def set_param(self, name, value):
         pass
 
-    def get_gradient(self, preds, info, iters):
+    def get_gradient(self, preds, labels, weights, iters):
         pass
 
     def default_eval_metric(self):
@@ -27,8 +41,9 @@ class IObjFunction:
         return base_score
 
 
-class RegLossObj(IObjFunction):
+class RegLossObj(ObjFunction):
     def __init__(self, is_classifier=True):
+        super(RegLossObj, self).__init__()
         self.is_classifier = is_classifier
         self.scale_pos_weight = 1.0
 
@@ -39,28 +54,22 @@ class RegLossObj(IObjFunction):
     def check_label(self, x):
         pass
 
-    def get_gradient(self, preds, info, it):
-        labels = info.labels_
+    def get_gradient(self, preds, labels, weights, it):
+        n, n_group = preds.shape
         nstep = len(labels)
-        ndata = len(preds)
-        assert ndata % nstep == 0, 'labels_ are not correctly provided'
-        gpair = []
-        for i in range(ndata):
-            j = i % nstep
-            p = self.pred_transform(preds[i])
-            w = info.get_weight(j)
-            label = info.labels_[j]
-            if label == 1:
-                w *= self.scale_pos_weight
-            gpair.append(bst_gpair(self.gradient(label, p) * w,
-                         self.hessian(label, p) * w))
+        assert n % nstep == 0, 'labels_ are not correctly provided'
+        gpair = np.zeros((n, 2))
+        p = self.pred_transform(preds)
+        weights[labels == 1] *= self.scale_pos_weight
+        gpair[:, 0] = self.gradient(labels, p) * weights
+        gpair[:, 1] = self.hessian(labels, p) * weights
         return gpair
 
     def gradient(self, y, ypred):
-        pass
+        return 0
 
     def hessian(self, y, ypred):
-        pass
+        return 0
 
     def pred_transform(self, x):
         return x
@@ -105,8 +114,9 @@ class LogisticNeglik(RegLossObj):
         return base_score
 
 
-class SoftmaxMultiClassObj(IObjFunction):
+class SoftmaxMultiClassObj(ObjFunction):
     def __init__(self, output_prob):
+        super(SoftmaxMultiClassObj, self).__init__()
         self.output_prob = output_prob
         self.nclass = 0
 

@@ -13,7 +13,7 @@ class LearnerModelParam:
         self.num_feature = user_param.num_feature
         self.num_output_group = user_param.num_class
         if user_param.num_class == 0:
-            self.num_output_group = 0
+            self.num_output_group = 1
         self.num_class = self.num_output_group
 
     def initialized(self):

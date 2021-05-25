@@ -8,6 +8,12 @@ from enum import Enum
 
 # namespace: xgboost
 
+class DMat:
+    def __init__(self, data, label=None, weight=None):
+        xcsr = csr_matrix(data)
+
+
+
 
 class FeatureType(Enum):
     kNumerical = 0

@@ -1,4 +1,5 @@
-from utils.util import GenericParameter, LearnerModelParam
+from utils.util import GenericParameter
+from param.model_param import LearnerModelParam
 
 
 class GradientBooster:
@@ -17,13 +18,13 @@ class GradientBooster:
     def boosted_rounds(self):
         pass
 
-    def do_boost(self, p_fmat, in_gpair, pred_cache_entry):
+    def do_boost(self, p_fmat, in_gpair):
         pass
 
-    def predict_batch(self, dmat, out_preds, training, layer_begin, layer_end):
+    def predict_batch(self, dmat, training, layer_begin, layer_end):
         pass
 
-    def predict_leaf(dmat, out_preds, layer_begin, layer_end):
+    def predict_leaf(self, dmat, layer_begin, layer_end):
         pass
 
     def create(self, name, generic_param, learner_model_param):

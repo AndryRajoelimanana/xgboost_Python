@@ -11,7 +11,6 @@ import time
 from data_i.data import CSRAdapter, SortedCSCPage
 from scipy.sparse import csr_matrix, csc_matrix
 
-
 rt_eps = 1e-5
 rt_2eps = 2e-5
 kRtEps = 1e-6
@@ -23,9 +22,9 @@ class ColMakerTrainParam(TrainParam):
         self.opt_dense_col = 1.0
 
     def need_forward_search(self, default_direction, col_density, indicator):
-        return (default_direction == 2) or (
-                (default_direction == 0) and (
-                col_density < self.opt_dense_col and not indicator))
+        return (default_direction == 2) or ((
+               (default_direction == 0) and (
+                col_density < self.opt_dense_col and not indicator)))
 
     def need_backward_search(self, default_direction):
         return default_direction != 2
@@ -39,14 +38,15 @@ class ColMaker:
         self.colmaker_train_param_ = ColMakerTrainParam()
         # self.data_ = data
         # self.column_densities_ = self.lazy_get_column_density()
-        self.column_densities_ = [1.0]*12
+        self.column_densities_ = [1.0] * 12
         self.interaction_constraints_ = ''
 
     def set_param(self, name, value):
         self.param_.set_param(name, value)
 
-    def lazy_get_column_density(self):
-        return self.data_.getnnz(axis=0) / self.data_.shape[0]
+    @staticmethod
+    def lazy_get_column_density(self, data):
+        return data.getnnz(axis=0) / data.shape[0]
 
     def update(self, gpair, p_fmat, trees):
         lr = self.param_.learning_rate
@@ -99,7 +99,7 @@ class ColMaker:
             self.init_new_node(self.qexpand_, gpair, p_fmat, p_tree)
             for depth in range(self.param_.max_depth):
                 self.find_split(depth, self.qexpand_, gpair, p_fmat, p_tree)
-            #     self.find_split(depth, self.qexpand_, gpair, p_fmat, p_tree)
+                #     self.find_split(depth, self.qexpand_, gpair, p_fmat, p_tree)
                 self.reset_position(self.qexpand_, p_fmat, p_tree)
             #     self.update_queue_expand(p_tree, self.qexpand_)
             #     self.init_new_node(self.qexpand_, gpair, p_fmat, p_tree)
@@ -217,7 +217,7 @@ class ColMaker:
                 temp[nid].stats = GradStats()
             c = GradStats()
             kBuffer = len(data)
-            buf_position = [0]*kBuffer
+            buf_position = [0] * kBuffer
             buf_gpair = [GradientPair() for _ in range(kBuffer)]
             for i in range(len(data)):
                 it = data[i]
@@ -283,51 +283,51 @@ class ColMaker:
             self.update_solution(batch, feat_set, gpair, p_fmat)
             # for batch in p_fmat.get
 
-#
-#         def find_split(self, depth, qexpand, gpair, p_fmat, p_tree):
-#             evaluator = self.tree_evaluator_.get_evaluator()
-#             feat_set = self.column_sampler_.get_feature_set(depth)
-#             p_fmat =
-#             for batch in p_fmat.get
-#
-#
-#             if self.param_.colsample_bylevel != 1:
-#                 np.random.shuffle(feat_set)
-#                 n = self.param_.colsample_bylevel * len(feat_set)
-#                 assert n > 0, 'colsample_bylevel is too small'
-#                 resize(feat_set, n)
-#             iter_i = p_fmat.col_iterator(feat_set)
-#             while iter_i.next():
-#                 batch = iter_i.value()
-#                 nsize = batch.size
-#                 # batch_size = np.maximum(nsize/(32*self.nthread), 1)
-#                 for i in range(nsize):
-#                     fid = batch.col_index[i]
-#                     tid = 0
-#                     c = batch[i]
-#                     if self.param_.need_forward_search(
-#                             p_fmat.get_col_density(fid)):
-#                         self.enumerate_split(c.data_[0:c.length], 1, fid, gpair,
-#                                              info, self.stemp_[tid])
-#                     if self.param_.need_backward_search(
-#                             p_fmat.get_col_density(fid)):
-#                         self.enumerate_split(c.data_[0:c.length], -1, fid,
-#                                              gpair,
-#                                              info, self.stemp_[tid])
-#
-#             for i in range(len(qexpand)):
-#                 nid = qexpand[i]
-#                 e = self.snode_[nid]
-#                 for tid in range(self.nthread):
-#                     e.best.update_e(self.stemp_[tid][nid].best)
-#                 if e.best.loss_chg > rt_eps:
-#                     p_tree.add_child(nid)
-#                     p_tree[nid].set_split(e.best.split_index(),
-#                                           e.best.split_value,
-#                                           e.best.default_left())
-#                 else:
-#                     p_tree[nid].set_leaf(e.weight * self.param_.learning_rate)
-#
+        #
+        #         def find_split(self, depth, qexpand, gpair, p_fmat, p_tree):
+        #             evaluator = self.tree_evaluator_.get_evaluator()
+        #             feat_set = self.column_sampler_.get_feature_set(depth)
+        #             p_fmat =
+        #             for batch in p_fmat.get
+        #
+        #
+        #             if self.param_.colsample_bylevel != 1:
+        #                 np.random.shuffle(feat_set)
+        #                 n = self.param_.colsample_bylevel * len(feat_set)
+        #                 assert n > 0, 'colsample_bylevel is too small'
+        #                 resize(feat_set, n)
+        #             iter_i = p_fmat.col_iterator(feat_set)
+        #             while iter_i.next():
+        #                 batch = iter_i.value()
+        #                 nsize = batch.size
+        #                 # batch_size = np.maximum(nsize/(32*self.nthread), 1)
+        #                 for i in range(nsize):
+        #                     fid = batch.col_index[i]
+        #                     tid = 0
+        #                     c = batch[i]
+        #                     if self.param_.need_forward_search(
+        #                             p_fmat.get_col_density(fid)):
+        #                         self.enumerate_split(c.data_[0:c.length], 1, fid, gpair,
+        #                                              info, self.stemp_[tid])
+        #                     if self.param_.need_backward_search(
+        #                             p_fmat.get_col_density(fid)):
+        #                         self.enumerate_split(c.data_[0:c.length], -1, fid,
+        #                                              gpair,
+        #                                              info, self.stemp_[tid])
+        #
+        #             for i in range(len(qexpand)):
+        #                 nid = qexpand[i]
+        #                 e = self.snode_[nid]
+        #                 for tid in range(self.nthread):
+        #                     e.best.update_e(self.stemp_[tid][nid].best)
+        #                 if e.best.loss_chg > rt_eps:
+        #                     p_tree.add_child(nid)
+        #                     p_tree[nid].set_split(e.best.split_index(),
+        #                                           e.best.split_value,
+        #                                           e.best.default_left())
+        #                 else:
+        #                     p_tree[nid].set_leaf(e.weight * self.param_.learning_rate)
+        #
         def reset_position(self, qexpand, p_fmat, tree):
             rowset = p_fmat.buffered_rowset()
             ndata = len(rowset)
@@ -366,8 +366,6 @@ class ColMaker:
                                 self.position_[ridx] = tree[nid].left_child()
                             else:
                                 self.position_[ridx] = tree[nid].right_child()
-
-
 
         def setup_position(self, gpair, fmat):
             self.position_ = [0] * len(gpair)
@@ -463,12 +461,11 @@ if __name__ == "__main__":
     col = ColMaker(dm)
 
     from tree.tree import RegTree
+
     trees = [RegTree()]
 
     col.update(gpair, dm, trees)
     print('done')
-
-
 
 # class Iupdater:
 #     def __init__(self):

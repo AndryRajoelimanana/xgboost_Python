@@ -1,6 +1,6 @@
 from sklearn import datasets
 from params import *
-from objective.loss_function import LinearSquareLoss
+from objective.loss_function import LinearSquareLoss, ObjFunction
 # from scipy.sparse import csc_matrix
 # from tree.split_evaluator import TreeEvaluator
 # from updaters.update_colmaker import ThreadEntry
@@ -11,7 +11,7 @@ from param.train_param import TrainParam, ColMakerTrainParam, NodeEntry
 from param.train_param import SplitEntry
 from utils.eval_fn import Evaluator
 from utils.util import resize, GenericParameter
-
+from gbm.learner import LearnerImpl
 
 kRtEps = 1e-6
 
@@ -22,48 +22,86 @@ def train(params, dtrain, num_boost_round=10, evals=(), obj=None, feval=None,
     bst = Booster(params, dtrain)
     for i in range(num_boost_round):
         bst.update(dtrain, i, obj)
+    return bst.copy()
 
 
 class Booster:
     # def __init__(self, data, obj_fn=None, base_score=0.5, num_boost_round=2):
-    def __init__(self, param={}, cache=(), model_file=None):
+    def __init__(self, param={}, cache=(), labels=None, weights=None,
+                 model_file=None):
 
-        self.data = data
+        self.data = cache
+        if weights is None:
+            weights = np.ones_like(labels)
+        self.learner = LearnerImpl(cache, labels, weights)
+        if 'booster' in param.keys():
+            self.booster = param['booster']
+        else:
+            self.booster = 'gbtree'
+        self.set_param(param)
+
         self.mparam = GBTreeModelParam()
         self.tparam = GBTreeTrainParam()
 
-        self.nrow = data.shape[0]
-        self.ncol = data.shape[1]
+        # self.nrow = data.shape[0]
+        # self.ncol = data.shape[1]
 
         self.booster = 'gbtree'
-
-        self.num_boost_round = num_boost_round
-        self.grad = self.hess = None
-        self.obj_ = obj_fn if obj_fn is not None else LinearSquareLoss()
-
-        self.pos = np.zeros(self.nrow, dtype=int)
+        # self.num_boost_round = num_boost_round
+        # self.grad = self.hess = None
+        # self.obj_ = obj_fn if obj_fn is not None else LinearSquareLoss()
+        # self.pos = np.zeros(self.nrow, dtype=int)
         # initial
-        self.set_gpair(base_score)
+        # self.set_gpair(base_score)
 
     def set_param(self, params, value=None):
+        # params_txt = ""
         for k, v in params.items():
-            self.params
+            self.learner.set_param(k, v)
+            # params_txt += f'{k}: {getattr(self.learner.cfg_, k) }'
+        # print(params_txt)
 
-
-    def set_gpair(self, pred=0.5):
+    def set_gpair(self, pred=0.5, obj_=None):
+        obj_fn = obj_ if obj_ is not None else LinearSquareLoss()
         if isinstance(pred, float) or isinstance(pred, int):
             pred = np.full(self.data.shape[0], pred)
-        self.grad = self.obj_.gradient(pred, y)
-        self.hess = self.obj_.hessian(pred, y)
+        grad = obj_fn.gradient(pred, y)
+        hess = obj_fn.hessian(pred, y)
+        return grad, hess
 
-    def update(self, train, i, obj=None):
-        trees = [RegTree() for _ in range(self.num_boost_round)]
-        data = self.data
-        for tree in trees:
-            colmaker = ColMaker()
-            colmaker.update(grad0, hess0, X, tree)
+    def update(self, train, i, fobj=None):
+        if fobj is None:
+            self.learner.update_one_iter(i, train)
+        else:
+            if i == 0:
+                pred = np.full(train.shape[0], self.learner.mparam_.base_score)
+            else:
+                pred = self.predict(train, output_margin=True, training=True)
+            grad = fobj.gradient(pred, self.learner.labels_)
+            hess = fobj.hessian(pred, self.learner.labels_)
+            self.boost(train, grad, hess)
 
-        # for depth in range(self.mparam.)
+    def predict(self, train, output_margin=False, ntree_limit=0,
+                pred_leaf=False, pred_contribs=False,
+                approx_contribs=False, pred_interactions=False,
+                validate_features=True, training=False,
+                iteration_range=(0, 0), strict_shape=False):
+
+        layer_begin, layer_end = iteration_range
+        preds = self.learner.predict(train, output_margin, layer_begin,
+                                     layer_end, training, pred_leaf,
+                                     pred_contribs, approx_contribs,
+                                     pred_interactions)
+        return preds
+
+    def boost(self, dtrain, grad, hess):
+        self.learner.configure()
+        gpair = np.vstack([grad, hess])
+        self.learner.boost_one_iter(0, dtrain, gpair)
+
+    def predict_raw(self, dmat, training, layer_begin, layer_end):
+        return self.gbm_
+
 
 
 class ColMaker:
@@ -75,8 +113,8 @@ class ColMaker:
         self.param_.set_param(k, v)
 
     def update(self, grad, hess, fmat, trees):
-        lr = self.param_.learning_rate
-        self.param_.learning_rate = lr / len(trees)
+        # lr = self.param_.learning_rate
+        # self.param_.learning_rate = lr / len(trees)
         # for tree in trees:
         param = self.param_
         cparam = self.colmaker_train_param_
@@ -158,25 +196,54 @@ class ColMaker:
                 col = dat[:, icol].copy()
                 ind_sort = np.argsort(col)
                 col = col[ind_sort]
+                new_grad = grad[ind_sort]
+                new_hess = hess[ind_sort]
                 gain = self.eval_fn.get_gain(p, grad.sum(), hess.sum())
-                for i, d in enumerate(col):
-                    if i == 0:
-                        continue
-                    if d == col[i - 1]:
-                        continue
-                    left = col < d
-                    res = self.eval_fn.calc_split_gain(p, grad[ind_sort],
-                                                       hess[ind_sort], left)
-                    new_loss = res[0] - gain
+                total_grad = grad.sum()
+                total_hess = hess.sum()
+                grad_right = total_grad
+                hess_right = total_hess
+                # statistics for nan missing value
+                nan_stats = (grad[np.isnan(col)].sum(),
+                             hess[np.isnan(col)].sum())
 
-                    l_stat = res[1]
-                    r_stat = res[2]
+                for i, d in enumerate(col):
+                    if np.isnan(d):
+                        break
+                    if i == 0 or d == col[i - 1]:
+                        grad_right -= new_grad[i]
+                        hess_right -= new_hess[i]
+                        continue
+
+                    # compute children gain for default left direction (
+                    # missing values belong to left children node)
+                    sleft = (total_grad - grad_right + nan_stats[0],
+                             total_hess - hess_right + nan_stats[1])
+                    sright = (grad_right, hess_right)
+                    res_dleft = self.eval_fn.calc_split_gain(p, sleft, sright)
+
+                    # compute children gain for default right direction (
+                    # missing values belong to right children node)
+                    sleft = (total_grad - grad_right, total_hess - hess_right)
+                    sright = (grad_right + nan_stats[0], hess_right +
+                              nan_stats[1])
+                    res_dright = self.eval_fn.calc_split_gain(p, sleft, sright)
+
+                    new_loss = max(res_dleft, res_dright) - gain
+
                     if new_loss > loss:
                         loss = new_loss
-                        best_ind = icol
+                        if res_dleft > res_dright:
+                            best_ind = icol | (1 << 31)
+                        else:
+                            best_ind = icol
                         best_val = (d + col[i - 1]) / 2
-                        left_sum = l_stat
-                        right_sum = r_stat
+                        left_sum = sleft
+                        right_sum = sright
+
+                    grad_right -= new_grad[i]
+                    hess_right -= new_hess[i]
+
             return loss, best_ind, best_val, left_sum, right_sum
 
         def positions(self):
@@ -197,7 +264,7 @@ class ColMaker:
                     i_right = curr_pos & (col >= val)
                     sign_l = np.sign(self.pos[i_left]) + (self.pos[i_left] == 0)
                     sign_r = np.sign(self.pos[i_right]) + (
-                                self.pos[i_right] == 0)
+                            self.pos[i_right] == 0)
                     self.pos[i_left] = self.tree[nid].left_child() * sign_l
                     self.pos[i_right] = self.tree[nid].right_child() * sign_r
 
@@ -235,10 +302,11 @@ if __name__ == "__main__":
     hess0 = gg.hessian(base_s, y)
     trees0 = [RegTree()]
 
-    colmaker = ColMaker()
-    colmaker.update(grad0, hess0, X, trees0)
+    bst = Booster({'num_parallel_tree':5}, X, y)
+    bst.update(X, 0, LinearSquareLoss())
 
-
+    # colmaker = ColMaker()
+    # colmaker.update(grad0, hess0, X, trees0[0])
 
     # gpair = []
     # stats = GradStats()
@@ -264,4 +332,3 @@ if __name__ == "__main__":
     # gain = calc_gain(p, stats)
 
     print(0)
-

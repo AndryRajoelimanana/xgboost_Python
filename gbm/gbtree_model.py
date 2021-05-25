@@ -1,4 +1,4 @@
-from utils.util import LearnerModelParam
+from param.model_param import LearnerModelParam
 import numpy as np
 
 
@@ -48,7 +48,7 @@ class GBTreeModel:
 
     def configure(self, cfg):
         if len(self.trees) == 0:
-            for k, v in cfg:
+            for k, v in cfg.items():
                 setattr(self.param, k, v)
 
     def init_trees_to_update(self):

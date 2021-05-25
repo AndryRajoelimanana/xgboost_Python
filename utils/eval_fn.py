@@ -20,13 +20,11 @@ class Evaluator:
         return -(2.0 * sum_grad * w + (sum_hess + p.reg_lambda) * (w * w))
 
     @staticmethod
-    def calc_split_gain(param, grad, hess, left):
+    def calc_split_gain(param, sleft, sright):
         constraint = 0
         negative_infinity = np.iinfo(int).min
-        g_l = grad[left].sum()
-        g_r = grad[~left].sum()
-        h_l = hess[left].sum()
-        h_r = hess[~left].sum()
+        g_l, h_l = sleft
+        g_r, h_r = sright
         wleft = Evaluator.get_weight(param, g_l, h_l)
         wright = Evaluator.get_weight(param, g_r, h_r)
 
@@ -35,13 +33,11 @@ class Evaluator:
         gain = gain_l + gain_r
 
         if constraint == 0:
-            ls = (g_l, h_l)
-            rs = (g_r, h_r)
-            return gain, ls, rs
+            return gain
         elif constraint > 0:
-            return gain, 0, 0 if wleft <= wright else negative_infinity, 0, 0
+            return gain if wleft <= wright else negative_infinity
         else:
-            return gain, 0, 0 if wleft >= wright else negative_infinity, 0, 0
+            return gain if wleft >= wright else negative_infinity
 
     @staticmethod
     def get_gain(p, sum_grad, sum_hess):

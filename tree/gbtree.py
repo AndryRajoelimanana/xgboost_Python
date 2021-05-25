@@ -6,7 +6,7 @@ from updaters.refresher import TreeRefresher
 from tree.tree import RegTree
 from data_i.data_mat import bst_gpair
 from enum import Enum
-from gbm.gbm import GradientBooster
+from gbm.gbms import GradientBooster
 
 
 class TreeMethod(Enum):
