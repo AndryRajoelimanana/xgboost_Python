@@ -1,13 +1,15 @@
 import numpy as np
 from enum import Enum
+from param.model_param import XGBoostParameter
 
 
-class TrainParam:
+class TrainParam(XGBoostParameter):
     """
     param_.h
     """
 
     def __init__(self):
+        super().__init__()
         self.learning_rate = 0.3
         self.min_split_loss = 0.0
         self.max_depth = 6

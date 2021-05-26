@@ -5,6 +5,7 @@ from enum import Enum
 from utils.util import resize
 from tree.tree import RegTree
 from predictor.predictors import CPUPredictor
+from param.model_param import XGBoostParameter
 
 
 class TreeMethod:
@@ -27,8 +28,9 @@ class PredictorType:
     kOneAPIPredictor = 3
 
 
-class GBTreeTrainParam:
+class GBTreeTrainParam(XGBoostParameter):
     def __init__(self, process_type=0, predictor=0, tree_method=0):
+        super().__init__()
         self.nthread = 0
         self.updater_seq = None
         self.num_parallel_tree = 1
@@ -114,9 +116,8 @@ class GBTree(GradientBooster):
     def configure(self, cfg):
         self.cfg_ = cfg
         updater_seq = self.tparam_.updater_seq
-        for k, v in cfg.items():
-            if hasattr(self.tparam_, k):
-                setattr(self.tparam_, k, v)
+        self.tparam_.update_allow_uknown(cfg)
+
         self.model_.configure(cfg)
         if self.tparam_.process_type == TreeProcessType.kUpdate:
             self.model_.init_trees_to_update()
@@ -238,7 +239,8 @@ class GBTree(GradientBooster):
             self.tparam_.updater_seq = "grow_gpu_hist"
         else:
             print(self.tparam_.tree_method)
-            raise Exception("Unknown Tree Method")
+            raise Exception(f'Unknown Tree Method {self.tparam_.tree_method} '
+                            f'detected')
 
     def configure_with_known_data(self, cfg, fmat):
         assert self.configured_

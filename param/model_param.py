@@ -5,6 +5,48 @@ class DataSplitMode:
     kCol = 1
     kRow = 2
 
+class ParamInitOption:
+    kAllowUnknown = 0
+    kAllMatch = 1
+    kAllowHidden = 2
+
+
+class dmlcParameter:
+    def init(self, kwargs, option=ParamInitOption.kAllowHidden):
+        self.run_init(kwargs, option)
+
+    def init_allow_unknown(self, kwargs):
+        unkonwn = self.run_init(kwargs, ParamInitOption.kAllowUnknown)
+        return unkonwn
+
+    def update_allow_unknown(self, kwargs):
+        self.run_update(kwargs, ParamInitOption.kAllowUnknown, None)
+
+    def run_init(self, kwargs, option):
+        return 0
+
+    def run_update(self, kwargs, option, selected_args):
+
+
+
+
+class XGBoostParameter:
+    def __init__(self):
+        self.initialised_ = True
+
+    def update_allow_uknown(self, kwargs):
+        unknown = {}
+        if self.initialised_:
+            for k, v in kwargs.items():
+                if hasattr(self, k):
+                    setattr(self, k, v)
+                else:
+                    unknown[k] = v
+        return unknown
+
+    def get_initialised(self):
+        return self.initialised_
+
 
 class LearnerModelParam:
     def __init__(self, user_param, base_margin=0.5):
@@ -28,9 +70,16 @@ class LearnerModelParamLegacy:
         self.num_class = num_class
 
 
-class LearnerTrainParam:
+class LearnerTrainParam(XGBoostParameter):
     def __init__(self):
+        super(LearnerTrainParam, self).__init__()
         self.dsplit = DataSplitMode.kAuto
         self.disable_default_eval_metric = False
         self.booster = 'gbtree'
         self.objective = 'reg:squarederror'
+
+
+
+
+
+
