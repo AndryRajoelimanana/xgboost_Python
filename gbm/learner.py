@@ -158,6 +158,7 @@ class LearnerImpl(LearnerIO):
         self.gbm_.do_boost(train, gpair_)
 
     def boost_one_iter(self, i_iter, train, in_gpair):
+        self.configure()
         # predt = self.predict_raw(train, False, 0, 0)
         self.gbm_.do_boost(train, in_gpair)
 

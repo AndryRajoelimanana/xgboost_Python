@@ -302,7 +302,7 @@ if __name__ == "__main__":
     hess0 = gg.hessian(base_s, y)
     trees0 = [RegTree()]
 
-    bst = Booster({'num_parallel_tree':5}, X, y)
+    bst = Booster({'num_parallel_tree': 5, 'updater': 'grow_colmaker'}, X, y)
     bst.update(X, 0, LinearSquareLoss())
 
     # colmaker = ColMaker()

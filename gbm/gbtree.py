@@ -30,7 +30,7 @@ class PredictorType:
 class GBTreeTrainParam:
     def __init__(self, process_type=0, predictor=0, tree_method=0):
         self.nthread = 0
-        self.updater_seq = ['grow_colmaker']
+        self.updater_seq = None
         self.num_parallel_tree = 1
         self.updater_initialized = 0
         self.process_type = process_type
@@ -115,7 +115,8 @@ class GBTree(GradientBooster):
         self.cfg_ = cfg
         updater_seq = self.tparam_.updater_seq
         for k, v in cfg.items():
-            setattr(self.tparam_, k, v)
+            if hasattr(self.tparam_, k):
+                setattr(self.tparam_, k, v)
         self.model_.configure(cfg)
         if self.tparam_.process_type == TreeProcessType.kUpdate:
             self.model_.init_trees_to_update()
@@ -165,7 +166,7 @@ class GBTree(GradientBooster):
         """ Boost one iteration gpair of size [n_sample, 2, n_group]"""
         new_trees = []
         ngroup = self.model_.learner_model_param.num_output_group
-        # self.configure_with_known_data(self.cfg_, p_fmat)
+        self.configure_with_known_data(self.cfg_, p_fmat)
         assert ngroup != 0
         if ngroup == 1:
             new_tree = self.boost_new_trees(gpair[:, 0], gpair[:, 1],
@@ -238,6 +239,18 @@ class GBTree(GradientBooster):
         else:
             print(self.tparam_.tree_method)
             raise Exception("Unknown Tree Method")
+
+    def configure_with_known_data(self, cfg, fmat):
+        assert self.configured_
+        updater_seq = self.tparam_.updater_seq
+        assert self.tparam_.initialised_
+        for k, v in cfg:
+            if hasattr(self.tparam_, k):
+                setattr(self.tparam_, k, v)
+        self.configure_updaters()
+        if updater_seq != self.tparam_.updater_seq:
+            self.updaters_ = []
+            self.init_updater(cfg)
 
     def init_updater(self):
         tval = self.tparam_.updater_seq
@@ -347,10 +360,7 @@ class Dart(GBTree):
 #         new_trees = []
 #         ngroup = self.model_.learner_model_param.num_output_group
 #
-#     def configure_with_known_data(self, cfg, fmat):
-#         updater_seq = self.tparam_.updater_seq
-#         for k, v in cfg:
-#             setattr(self.tparam_, k, v)
+
 #
 #     def perform_tree_method_heuristic(self, fmat):
 #         if self.specified_updater_:

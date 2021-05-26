@@ -49,7 +49,8 @@ class GBTreeModel:
     def configure(self, cfg):
         if len(self.trees) == 0:
             for k, v in cfg.items():
-                setattr(self.param, k, v)
+                if hasattr(self.param, k):
+                    setattr(self.param, k, v)
 
     def init_trees_to_update(self):
         if len(self.trees_to_update) == 0:
