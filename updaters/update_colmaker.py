@@ -6,6 +6,7 @@ from param.train_param import TrainParam, ColMakerTrainParam, NodeEntry
 from param.train_param import SplitEntry
 from utils.eval_fn import Evaluator
 from utils.util import resize
+from updaters.tree_updater import TreeUpdater
 
 
 rt_eps = 1e-5
@@ -13,10 +14,15 @@ rt_2eps = 2e-5
 kRtEps = 1e-6
 
 
-class ColMaker:
+class ColMaker(TreeUpdater):
     def __init__(self):
+        super(ColMaker, self).__init__()
         self.param_ = TrainParam()
         self.colmaker_train_param_ = ColMakerTrainParam()
+
+    def configure(self, args):
+        self.param_.update_allow_unknown(args)
+        self.colmaker_train_param_.update_allow_unknown(args)
 
     def set_param(self, k, v):
         self.param_.set_param(k, v)
@@ -196,6 +202,10 @@ class ColMaker:
                     p_newnodes.append(self.tree[nid].left_child())
                     p_newnodes.append(self.tree[nid].right_child())
             self.q_expand_ = p_newnodes
+
+    @staticmethod
+    def name():
+        return "grow_colmaker"
 
 
 

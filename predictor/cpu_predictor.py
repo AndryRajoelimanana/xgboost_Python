@@ -1,22 +1,7 @@
+from predictor.predictors import Predictor
 import numpy as np
 
 
-class Predictor:
-    def __init__(self, generic_param):
-        self.__generic_param_ = generic_param
-
-    def configure(self, cfg):
-        pass
-
-
-def create_predictor(name, generic_param):
-    if name == 'cpu_predictor':
-        pred = CPUPredictor(generic_param)
-    elif name == 'gpu_prediction':
-        pred = GPUPredictor(generic_param)
-    else:
-        raise ValueError(f"Unknown GradientBooster: {name}")
-    return pred
 
 
 def predict_by_all_trees(fmat, model, tree_begin, tree_end):
@@ -52,44 +37,8 @@ def predict_batch_by_block_of_rows_kernel(batch, model, tree_begin, tree_end):
 
 
 class CPUPredictor(Predictor):
-    def __init__(self, generic_param):
-        super(CPUPredictor, self).__init__(generic_param)
-
-    @staticmethod
-    def predict_dmatrix(data, model, tree_begin, tree_end):
-        return predict_by_all_trees(data, model, tree_begin, tree_end)
-
-    def predict_batch(self, fmat, model, tree_begin, tree_end=0):
-        if tree_end == 0:
-            tree_end = len(model.trees)
-        predt = self.predict_dmatrix(fmat, model, tree_begin, tree_end)
-        return predt
-
-    def predict_instance(self, inst, model, tree_end):
-        return self.predict_dmatrix(inst, model, 0, tree_end)
-
-    @staticmethod
-    def predict_leaf(data, model, ntree_limit=0):
-        n_sample = data.shape[0]
-        n_trees = len(model.trees)
-        if ntree_limit == 0 or ntree_limit > n_trees:
-            ntree_limit = n_trees
-
-        preds = np.zeros((n_sample, ntree_limit))
-        for i in range(n_sample):
-            for tree_id in range(n_trees):
-                preds[i, tree_id] = pred_leaf_by_one_tree(data[i], model.trees[
-                    tree_id])
-        return preds
-
-    def predict_contribution(self, data, model, tree_begin, tree_end,
-                             approximate):
-        return 0
-
-
-class GPUPredictor(Predictor):
-    def __init__(self, generic_param):
-        super(GPUPredictor, self).__init__(generic_param)
+    def __init__(self):
+        super(CPUPredictor, self).__init__()
 
     @staticmethod
     def predict_dmatrix(data, model, tree_begin, tree_end):

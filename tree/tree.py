@@ -3,7 +3,7 @@ import numpy as np
 from utils.util import resize
 # from  import FeatureType
 from data_i.data import FeatureType
-from functools import wraps
+from param.tree_model_param import TreeParam
 
 
 class TreeModel:
@@ -62,30 +62,6 @@ class Segment:
         self.size = size
 
 
-class TreeParam:
-    def __init__(self):
-        self.max_depth = 0
-        self.size_leaf_vector = 0
-        self.num_roots = 1
-        self.num_nodes = 1
-        self.num_deleted = 0
-        self.num_feature = None
-
-    def set_param(self, name, val):
-        if name == 'num_roots':
-            self.num_roots = val
-        elif name == 'num_feature':
-            self.num_feature = val
-        elif name == 'size_leaf_vector':
-            self.size_leaf_vector = val
-
-    def __eq__(self, b):
-        return (self.num_nodes == b.num_nodes) and (
-                self.num_deleted == b.num_deleted) and (
-                       self.num_feature == b.num_feature) and (
-                       self.size_leaf_vector == b.size_leaf_vector)
-
-
 class RTreeNodeStat:
     def __init__(self, loss_chg=None, sum_hess=None, weight=None):
         self.loss_chg = loss_chg
@@ -114,7 +90,7 @@ class RegTree(TreeModel):
         super().__init__()
         self.param = TreeParam()
         self.param.num_nodes = 1
-        self.param.num_roots = 1
+        # self.param.num_roots = 1
         self.param.num_deleted = 0
         self.nodes_ = []
         resize(self.nodes_, self.param.num_nodes, Node())
@@ -280,9 +256,12 @@ class RegTree(TreeModel):
         nid = 0
         while not self[nid].is_leaf():
             split_index = self[nid].split_index()
-            fvalue = feat.get_fvalue(split_index)
-            is_unknown = has_missing and feat.is_missing(split_index)
-            nid = self.get_next(nid, fvalue, has_missing, is_unknown)
+            fvalue = feat[split_index]
+            is_unknown = has_missing and (fvalue is None)
+            before_nid = nid
+            nid = self.get_next(nid, fvalue, is_unknown, has_missing)
+            if nid is None:
+                print(nid)
         return nid
 
     def calculate_contributions(self, feat, out_contribs, condition,
@@ -325,7 +304,7 @@ class RegTree(TreeModel):
                 hot_index = node.right_child()
             cold_index = node.right_child() if (hot_index == node.left_child(
             )) else node.left_child()
-            w = self.sta(node_index).sum_hess
+            w = self.stat(node_index).sum_hess
             hot_zero_fraction = self.stat(hot_index).sum_hess / w
             cold_zero_fraction = self.stat(cold_index).sum_hess / w
             incoming_zero_fraction = 1
@@ -397,9 +376,9 @@ class RegTree(TreeModel):
                     return self[pid].right_child()
         else:
             if fvalue < self[pid].split_cond():
-                self[pid].left_child()
+                return self[pid].left_child()
             else:
-                self[pid].right_child()
+                return self[pid].right_child()
 
     def dump_model(self, fmap, with_stats, formats):
         pass
@@ -449,7 +428,6 @@ class RegTree(TreeModel):
 
     def equal(self, other):
         self._ret = True
-
         def spl(nidx):
             if not self.nodes_[nidx] == other.nodes_[nidx]:
                 self._ret = False

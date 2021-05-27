@@ -1,13 +1,5 @@
-from param.model_param import LearnerModelParam, XGBoostParameter
-
-import numpy as np
-
-
-class GBTreeModelParam(XGBoostParameter):
-    def __init__(self):
-
-        self.num_trees = 0
-        self.size_leaf_vector = 0
+from param.model_param import LearnerModelParam
+from param.gbtree_params import GBTreeModelParam
 
 
 class GBTreeModel:
@@ -20,9 +12,7 @@ class GBTreeModel:
 
     def configure(self, cfg):
         if len(self.trees) == 0:
-            for k, v in cfg.items():
-                if hasattr(self.param, k):
-                    setattr(self.param, k, v)
+            self.param.update_allow_unknown(cfg)
 
     def init_trees_to_update(self):
         if len(self.trees_to_update) == 0:
@@ -37,4 +27,5 @@ class GBTreeModel:
             self.trees.append(tree)
             self.tree_info.append(bst_group)
         self.param.num_trees += len(new_trees)
+
 

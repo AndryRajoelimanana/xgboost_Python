@@ -1,5 +1,6 @@
 from utils.util import GenericParameter
-from param.model_param import LearnerModelParam
+from gbm.gbtree import GBTree
+from gbm.gblinear import GBLinear
 
 
 class GradientBooster:
@@ -27,16 +28,21 @@ class GradientBooster:
     def predict_leaf(self, dmat, layer_begin, layer_end):
         pass
 
-    def create(self, name, generic_param, learner_model_param):
-        # TODO
-        generic_param = GenericParameter()
-        learner_model_param = LearnerModelParam()
-        # end TODO
+
+def create_gbm(name, generic_param, learner_model_param):
+    if name == 'gbtree':
+        bst = GBTree(learner_model_param)
+    elif name == 'gblinear':
+        bst = GBLinear(learner_model_param)
+    else:
+        raise ValueError(f"Unknown GradientBooster: {name}")
+    bst.generic_param_ = generic_param
+    return bst
 
 
 class ParamFieldInfo:
     def __init__(self, name=None, types=None, types_info_str=None, description='' ):
-        self.name=name
+        self.name = name
         self.type = types
         self.type_info_str = types_info_str
         self.description = description
@@ -51,7 +57,6 @@ class dlmc_reg:
     def __init__(self):
         self.name = None
         self.arguments = []
-
 
     def set_body(self, body):
         self.body = body

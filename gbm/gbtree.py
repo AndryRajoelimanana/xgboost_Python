@@ -1,11 +1,48 @@
-from gbm.gbms import GradientBooster
-# from tree.gbtree import GBTreeTrainParam, TreeProcessType
+# from gbm.gbms import GradientBooster
 from gbm.gbtree_model import GBTreeModel, GBTreeModelParam
-from enum import Enum
 from utils.util import resize
 from tree.tree import RegTree
-from predictor.predictors import CPUPredictor
-from param.model_param import XGBoostParameter
+from predictor.predictors import create_predictor
+from param.gbtree_params import GBTreeTrainParam, DartTrainParam
+from updaters.tree_updater import create_treeupdater
+from param.generic_param import GenericParameter
+
+
+class GradientBooster:
+    def __init__(self):
+        self.generic_param_ = GenericParameter()
+
+    def configure(self, cfg):
+        pass
+
+    def slice(self, layer_begin, layer_end, step, out, out_of_bound):
+        raise Exception("Slice is not supported by current booster.")
+
+    def allow_lazy_check_point(self):
+        return False
+
+    def boosted_rounds(self):
+        pass
+
+    def do_boost(self, p_fmat, in_gpair):
+        pass
+
+    def predict_batch(self, dmat, training, layer_begin, layer_end):
+        pass
+
+    def predict_leaf(self, dmat, layer_begin, layer_end):
+        pass
+
+
+def create_gbm(name, generic_param, learner_model_param):
+    if name == 'gbtree':
+        bst = GBTree(learner_model_param)
+    elif name == 'gblinear':
+        bst = GBLinear(learner_model_param)
+    else:
+        raise ValueError(f"Unknown GradientBooster: {name}")
+    bst.generic_param_ = generic_param
+    return bst
 
 
 class TreeMethod:
@@ -28,41 +65,6 @@ class PredictorType:
     kOneAPIPredictor = 3
 
 
-class GBTreeTrainParam(XGBoostParameter):
-    def __init__(self, process_type=0, predictor=0, tree_method=0):
-        super().__init__()
-        self.nthread = 0
-        self.updater_seq = None
-        self.num_parallel_tree = 1
-        self.updater_initialized = 0
-        self.process_type = process_type
-        self.predictor = predictor
-        self.tree_method = tree_method
-        self.initialised_ = False
-
-    def set_param(self, name, val):
-        if name == 'updater' and val not in self.updater_seq:
-            self.updater_seq = [val]
-            self.updater_initialized = 0
-        elif name == 'num_parallel_tree':
-            self.num_parallel_tree = val
-
-    def get_initialised(self):
-        return self.initialised_
-
-
-class DartTrainParam:
-    def __init__(self, sample_type=0, normalize_type=0, rate_drop=0,
-                 one_drop=False, skip_drop=0.0, learning_rate=0.3):
-        self.sample_type = sample_type
-        self.normalize_type = normalize_type
-        self.rate_drop = rate_drop
-        self.one_drop = one_drop
-        self.skip_drop = skip_drop
-        self.learning_rate = learning_rate
-        self.eta = self.learning_rate
-
-
 def layer_to_tree(model, tparam, layer_begin, layer_end):
     groups = model.learner_model_param.num_output_group
     tree_begin = layer_begin * groups * tparam.num_parallel_tree
@@ -71,14 +73,14 @@ def layer_to_tree(model, tparam, layer_begin, layer_end):
         tree_end = len(model.trees)
     if len(model.trees) != 0:
         assert tree_begin <= tree_end
-    return tree_begin, tree_end
+    return int(tree_begin), int(tree_end)
 
 
 def slice_trees(layer_begin, layer_end, step, model, tparam, layer_trees, fn):
     tree_begin, tree_end = layer_to_tree(model, tparam, layer_begin, layer_end)
     if tree_end > len(model.trees):
         return True
-    layer_end = len(model.trees)/layer_trees if layer_end == 0 else layer_end
+    layer_end = len(model.trees) / layer_trees if layer_end == 0 else layer_end
     n_layers = (layer_end - layer_begin) / step
     in_it = tree_begin
     out_it = 0
@@ -109,21 +111,24 @@ class GBTree(GradientBooster):
         self.trees = []
         self.tree_info = []
         self.thread_temp = []
-        self.cpu_predictor_ = CPUPredictor()
+        self.cpu_predictor_ = None
         self.specified_updater_ = False
         self.configured_ = False
 
     def configure(self, cfg):
+        self.init_updater(cfg)
         self.cfg_ = cfg
         updater_seq = self.tparam_.updater_seq
-        self.tparam_.update_allow_uknown(cfg)
+        self.tparam_.update_allow_unknown(cfg)
 
         self.model_.configure(cfg)
         if self.tparam_.process_type == TreeProcessType.kUpdate:
             self.model_.init_trees_to_update()
         if self.cpu_predictor_ is None:
-            self.cpu_predictor_ = CPUPredictor()
-        self.configured_ = True
+            self.cpu_predictor_ = create_predictor('cpu_predictor',
+                                                   self.generic_param_)
+        self.cpu_predictor_.configure(cfg)
+
         self.specified_updater_ = 'updater' in cfg.keys()
         self.configure_updaters()
         if updater_seq != self.tparam_.updater_seq:
@@ -137,6 +142,9 @@ class GBTree(GradientBooster):
     def get_train_param(self):
         return self.tparam_
 
+    def allow_lazy_check_point(self):
+        return self.model_.learner_model_param.num_output_group == 1
+
     def layer_trees(self):
         """ Numbser trees per layer"""
         n_group = self.model_.learner_model_param.num_output_group
@@ -147,7 +155,7 @@ class GBTree(GradientBooster):
     def boosted_rounds(self):
         assert self.tparam_.num_parallel_tree != 0
         assert self.model_.learner_model_param.num_output_group != 0
-        return len(self.model_.trees)/self.layer_trees()
+        return len(self.model_.trees) / self.layer_trees()
 
     def slice(self, layer_begin, layer_end, step, out, out_of_bound):
         layer_trees = self.layer_trees()
@@ -161,6 +169,7 @@ class GBTree(GradientBooster):
         out.model_.param.num_trees = len(out.model_.trees)
 
     def get_predictor(self):
+        assert self.configured_
         return self.cpu_predictor_
 
     def do_boost(self, p_fmat, gpair):
@@ -172,25 +181,44 @@ class GBTree(GradientBooster):
         if ngroup == 1:
             new_tree = self.boost_new_trees(gpair[:, 0], gpair[:, 1],
                                             p_fmat)
-            new_trees += [new_tree]
+            new_trees.append(new_tree)
         else:
+            # assert gpair.shape[0] % ngroup == 0
             for gid in range(ngroup):
                 new_tree = self.boost_new_trees(gpair[:, 0, gid],
                                                 gpair[:, 1, gid],
                                                 p_fmat)
-                new_trees += [new_tree]
+                new_trees.append(new_tree)
         self.commit_model(new_trees)
         return new_trees
 
     def boost_new_trees(self, grad, hess, p_fmat):
         new_trees = []
         for i in range(self.tparam_.num_parallel_tree):
-            tree = RegTree()
-            for k, v in self.cfg_.items():
-                setattr(tree.param, k, v)
-            for up in self.updaters_:
-                up.update(grad, hess, p_fmat, tree)
-            new_trees.append(tree)
+            if self.tparam_.process_type == TreeProcessType.kDefault:
+                first_updater = self.updaters_[0]
+                msg_error = f'Updater: {first_updater} cannot used to create ' \
+                            f'new tree'
+                assert not first_updater.can_modify_tree(), msg_error
+                tree = RegTree()
+                tree.param.update_allow_unknown(self.cfg_)
+                new_trees.append(tree)
+            elif self.tparam_.process_type == TreeProcessType.kUpdate:
+                for up in self.updaters_:
+                    assert up.can_modify_tree(), f'Updater: {up.name} cannot ' \
+                                                 f'be modify'
+                    assert len(self.model_.trees) < \
+                           len(self.model_.trees_to_update), f'No more tree ' \
+                                                             f'left for ' \
+                                                             f'updating'
+                    t = self.model_.trees_to_update[len(self.model_.trees) +
+                                                    self.tparam_.num_parallel_tree]
+                    new_trees.append(t)
+
+        # update the trees
+        assert grad.shape[0] == p_fmat.shape[0], 'Mismatch row size'
+        for up in self.updaters_:
+            up.update(grad, hess, p_fmat, new_trees)
         return new_trees
 
     def inplace_predict(self):
@@ -202,12 +230,21 @@ class GBTree(GradientBooster):
             self.model_.commit_model(new_trees[gid], gid)
 
     def predict_batch(self, dmat, bools, layer_begin, layer_end):
+        assert self.configured_
+        if layer_end == 0:
+            layer_end = self.boosted_rounds()
         predictor = self.get_predictor()
         tree_begin, tree_end = self.layer_to_tree(layer_begin, layer_end)
 
         preds = predictor.predict_batch(dmat, self.model_, tree_begin,
                                         tree_end)
         return preds
+
+    def predict_instance(self, inst, layer_begin, layer_end):
+        assert self.configured_, 'GBTree : not configured'
+        tree_begin, tree_end = self.layer_to_tree(layer_begin, layer_end)
+        return self.cpu_predictor_.predict_instance(inst, self.model_,
+                                                    tree_end)
 
     def predict_leaf(self, dmat, layer_begin, layer_end):
         predictor = self.get_predictor()
@@ -245,26 +282,27 @@ class GBTree(GradientBooster):
     def configure_with_known_data(self, cfg, fmat):
         assert self.configured_
         updater_seq = self.tparam_.updater_seq
-        assert self.tparam_.initialised_
-        for k, v in cfg:
-            if hasattr(self.tparam_, k):
-                setattr(self.tparam_, k, v)
+        assert self.tparam_.get_initialised()
+        self.tparam_.update_allow_unknown(cfg)
         self.configure_updaters()
         if updater_seq != self.tparam_.updater_seq:
             self.updaters_ = []
             self.init_updater(cfg)
 
-    def init_updater(self):
+    def init_updater(self, cfg):
         tval = self.tparam_.updater_seq
         ups = tval.split(',')
         if len(self.updaters_) != 0:
             assert len(ups) == len(self.updaters_)
             for up in self.updaters_:
-                contains = up in ups
-                if not contains:
+                if up.name() not in ups:
                     raise Exception('Internal Error: mismatched '
                                     'updater sequence')
             return
+        for pstr in ups:
+            up = create_treeupdater(pstr, self.generic_param_)
+            up.configure(cfg)
+            self.updaters_.append(up)
 
     def layer_to_tree(self, layer_begin, layer_end):
         model = self.model_
@@ -314,7 +352,6 @@ class Dart(GBTree):
         self.idx_drop_ = []
         return num_drop
 
-
     #
     #
     # def configure(self, cfg):
@@ -331,7 +368,6 @@ class Dart(GBTree):
     #     if updater_seq != self.tparam_.updater_seq:
     #         self.updaters_ = []
     #         self.init_updater(cfg)
-
 
 #
 #
@@ -605,3 +641,8 @@ class Dart(GBTree):
 #         # out_pred[0] = psum
 #         # for i in range(self.mparam.size_leaf_vector):
 #
+
+
+class GBLinear(GradientBooster):
+    def __init__(self, booster_config):
+        super(GBLinear, self).__init__()

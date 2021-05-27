@@ -1,12 +1,14 @@
+from param.parameters import XGBoostParameter
 
 
-class GenericParameter:
+class GenericParameter(XGBoostParameter):
     kCpuId = -1
     kDefaultSeed = 0
 
     def __init__(self, seed=kDefaultSeed, seed_per_iteration=False, nthread=0,
                  gpu_id=-1, fail_on_invalid_gpu_id=False, gpu_page_size=0,
                  n_gpus=0):
+        super(GenericParameter, self).__init__()
         self.seed = seed
         self.seed_per_iteration = seed_per_iteration
         self.nthread = nthread

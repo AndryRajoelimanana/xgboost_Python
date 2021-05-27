@@ -11,13 +11,6 @@ class ObjFunction:
     """
     # def __init__(self):
         # self.tparam_ = GenericParameter()
-
-    def create(self, name):
-        dict_obj = {"multi:softprob": SoftmaxMultiClassObj(True),
-                    "multi:softmax": SoftmaxMultiClassObj(False),
-                    "reg:squaredlerror": LinearSquareLoss()
-                    }
-        return dict_obj[name]
     
     def configure(self, args):
         pass
@@ -39,6 +32,15 @@ class ObjFunction:
 
     def prob_to_margin(self, base_score):
         return base_score
+
+
+def create_objective(name):
+    dict_obj = {"multi:softprob": SoftmaxMultiClassObj(True),
+                "multi:softmax": SoftmaxMultiClassObj(False),
+                "reg:squaredlerror": LinearSquareLoss()
+                }
+    return dict_obj[name]
+
 
 
 class RegLossObj(ObjFunction):
@@ -131,6 +133,8 @@ class SoftmaxMultiClassObj(ObjFunction):
         eps = 1e-16
         if w is None:
             sample_weight = np.ones(y.shape[0])
+        else:
+            sample_weight = w
         hess = np.maximum((2.0 * probas * (1.0 - probas)) *
                           sample_weight[:, np.newaxis], eps)
         grad = (probas - one_hot_encoding(y)) * sample_weight[:, np.newaxis]

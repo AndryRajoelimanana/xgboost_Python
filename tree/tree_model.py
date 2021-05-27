@@ -1,6 +1,7 @@
 import numpy as np
 from tree.tree_model_helper import *
 from utils.util import resize
+from param.tree_model_param import TreeParam
 
 
 class TreeModel:

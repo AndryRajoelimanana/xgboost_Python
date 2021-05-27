@@ -1,6 +1,22 @@
 import numpy as np
 from enum import Enum
-from param.model_param import XGBoostParameter
+from param.parameters import XGBoostParameter
+
+
+class TreeGrowPolicy:
+    kDepthWise = 0
+    kLossGuide = 1
+
+
+class SamplingMethod:
+    kUniform = 0
+    kGradientBased = 1
+
+
+class Direction:
+    learn = 0
+    left = 1
+    right = 2
 
 
 class TrainParam(XGBoostParameter):
@@ -15,14 +31,14 @@ class TrainParam(XGBoostParameter):
         self.max_depth = 6
         self.max_leaves = 0
         self.max_bin = 256
-        self.grow_policy = self.TreeGrowPolicy.kDepthWise
+        self.grow_policy = TreeGrowPolicy.kDepthWise
         self.min_child_weight = 1.0
         self.reg_lambda = 1.0
         self.reg_alpha = 0.0
-        self.default_direction = self.Direction.learn
+        self.default_direction = Direction.learn
         self.max_delta_step = 0.0
         self.subsample = 1.0
-        self.sampling_method = self.SamplingMethod.kUniform
+        self.sampling_method = SamplingMethod.kUniform
         self.colsample_bynode = 1.0
         self.colsample_bylevel = 1.0
         self.colsample_bytree = 1.0
@@ -32,7 +48,7 @@ class TrainParam(XGBoostParameter):
         self.cache_opt = True
         self.refresh_leaf = True
 
-        self.opt_dense_col = 1.0
+        # self.opt_dense_col = 1.0
         self.monotone_constraints = []
 
         self.interaction_constraints = ''
@@ -42,58 +58,10 @@ class TrainParam(XGBoostParameter):
         self.enable_feature_grouping = 0
         self.max_conflict_rate = 0
         self.max_search_group = 100
-
-    def set_param(self, name, value):
-        if name == 'gamma':
-            self.min_split_loss = value
-        elif name == 'eta':
-            self.learning_rate = value
-        elif name == 'lambda':
-            self.reg_lambda = value
-        elif name == 'learning_rate':
-            self.learning_rate = value
-        elif name == 'min_child_weight':
-            self.min_child_weight = value
-        elif name == 'min_split_loss':
-            self.min_split_loss = value
-        elif name == 'reg_lambda':
-            self.reg_lambda = value
-        elif name == 'reg_alpha':
-            self.reg_alpha = value
-        elif name == 'subsample':
-            self.subsample = value
-        elif name == 'colsample_bylevel':
-            self.colsample_bylevel = value
-        elif name == 'colsample_bytree':
-            self.colsample_bytree = value
-        elif name == 'opt_dense_col':
-            self.opt_dense_col = value
-        elif name == 'size_leaf_vector':
-            self.size_leaf_vector = value
-        elif name == 'max_depth':
-            self.max_depth = value
-        elif name == 'nthread':
-            self.nthread = value
-        elif name == 'default_direction':
-            if value == 'learn':
-                self.default_direction = 0
-            elif value == 'left':
-                self.default_direction = 1
-            elif value == 'right':
-                self.default_direction = 2
-
-    class TreeGrowPolicy(Enum):
-        kDepthWise = 0
-        kLossGuide = 1
-
-    class SamplingMethod(Enum):
-        kUniform = 0
-        kGradientBased = 1
-
-    class Direction(Enum):
-        learn = 0
-        left = 1
-        right = 2
+        self.lamdba = self.reg_lambda
+        self.alpha = self.reg_alpha
+        self.gamma = self.min_split_loss
+        self.eta = self.learning_rate
 
     def need_prune(self, loss_chg, depth):
         return loss_chg < self.min_split_loss or (
@@ -105,7 +73,8 @@ class TrainParam(XGBoostParameter):
         return ret
 
     def max_nodes(self):
-        assert self.max_depth != 0 or self.max_leaves != 0, "Max leaves and max depth cannot both be unconstrained."
+        msg_error = "Max leaves and max depth cannot both be unconstrained."
+        assert self.max_depth != 0 or self.max_leaves != 0, msg_error
         if self.max_leaves > 0:
             n_nodes = self.max_leaves * 2 - 1
         else:
@@ -126,7 +95,7 @@ class TrainParam(XGBoostParameter):
         return sum_hess < self.min_child_weight * 2
 
 
-class ColMakerTrainParam(TrainParam):
+class ColMakerTrainParam(XGBoostParameter):
     def __init__(self):
         super().__init__()
         self.opt_dense_col = 1.0
@@ -212,3 +181,48 @@ class SplitEntryContainer:
 
 
 SplitEntry = SplitEntryContainer
+
+
+
+
+
+
+#
+# def set_param(self, name, value):
+#     if name == 'gamma':
+#         self.min_split_loss = value
+#     elif name == 'eta':
+#         self.learning_rate = value
+#     elif name == 'lambda':
+#         self.reg_lambda = value
+#     elif name == 'learning_rate':
+#         self.learning_rate = value
+#     elif name == 'min_child_weight':
+#         self.min_child_weight = value
+#     elif name == 'min_split_loss':
+#         self.min_split_loss = value
+#     elif name == 'reg_lambda':
+#         self.reg_lambda = value
+#     elif name == 'reg_alpha':
+#         self.reg_alpha = value
+#     elif name == 'subsample':
+#         self.subsample = value
+#     elif name == 'colsample_bylevel':
+#         self.colsample_bylevel = value
+#     elif name == 'colsample_bytree':
+#         self.colsample_bytree = value
+#     elif name == 'opt_dense_col':
+#         self.opt_dense_col = value
+#     elif name == 'size_leaf_vector':
+#         self.size_leaf_vector = value
+#     elif name == 'max_depth':
+#         self.max_depth = value
+#     elif name == 'nthread':
+#         self.nthread = value
+#     elif name == 'default_direction':
+#         if value == 'learn':
+#             self.default_direction = 0
+#         elif value == 'left':
+#             self.default_direction = 1
+#         elif value == 'right':
+#             self.default_direction = 2

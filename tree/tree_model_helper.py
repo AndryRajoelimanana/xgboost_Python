@@ -9,30 +9,6 @@ kNumerical = 0
 kCategorical = 1
 
 
-class TreeParam:
-    def __init__(self):
-        self.max_depth = 0
-        self.size_leaf_vector = 0
-        self.num_roots = 1
-        self.num_nodes = 1
-        self.num_deleted = 0
-        self.num_feature = None
-
-    def set_param(self, name, val):
-        if name == 'num_roots':
-            self.num_roots = val
-        elif name == 'num_feature':
-            self.num_feature = val
-        elif name == 'size_leaf_vector':
-            self.size_leaf_vector = val
-
-    def __eq__(self, b):
-        return (self.num_nodes == b.num_nodes) and (
-                self.num_deleted == b.num_deleted) and (
-                       self.num_feature == b.num_feature) and (
-                       self.size_leaf_vector == b.size_leaf_vector)
-
-
 class Node:
     def __init__(self, cleft=-1, cright=-1, parent=-1,
                  split_ind=0, split_cond=None,

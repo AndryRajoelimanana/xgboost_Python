@@ -1,10 +1,12 @@
 from param.model_param import LearnerModelParamLegacy, LearnerModelParam
 from param.model_param import LearnerTrainParam
-from utils.util import resize, GenericParameter
-from gbm.gbms import GradientBooster
-from gbm.gbtree import GBTree
-from objective.loss_function import LinearSquareLoss, ObjFunction
+from utils.util import resize
+# from gbm.gbms import GradientBooster
+from gbm.gbtree import create_gbm
+from objective.loss_function import LinearSquareLoss, create_objective
 import numpy as np
+from param.generic_param import GenericParameter
+
 
 class DataSplitMode:
   kAuto = 0
@@ -55,20 +57,21 @@ class LearnerConfiguration(Learner):
         if not self.need_configuration_:
             return
         old_tparam = self.tparam_
+        args = self.cfg_
+        self.tparam_.update_allow_unknown(args)
         mparam_backup = self.mparam_
-        for k, v in self.cfg_.items():
-            if hasattr(self.tparam_, k):
-                setattr(self.tparam_, k, v)
-            if hasattr(self.mparam_, k):
-                setattr(self.mparam_, k, v)
+        self.mparam_.update_allow_unknown(args)
+        self.generic_parameters_.update_allow_unknown(args)
+
         self.configure_num_feature()
-        self.configure_objective(old_tparam, self.cfg_)
-        if self.learner_model_param_.initialized() or \
+        args = self.cfg_
+        self.configure_objective(old_tparam, args)
+        if not self.learner_model_param_.initialized() or \
                 self.mparam_.base_score != mparam_backup.base_score:
             base_score = self.obj_.prob_to_margin(self.mparam_.base_score)
             self.learner_model_param_ = LearnerModelParam(self.mparam_,
                                                           base_score)
-        self.congifure_gbm(old_tparam, self.cfg_)
+        self.congifure_gbm(old_tparam, args)
         self.need_configuration_ = False
 
     def configure_num_feature(self):
@@ -93,11 +96,8 @@ class LearnerConfiguration(Learner):
             self.cfg_['max_delta_step'] = 0.7   # kMaxDeltaStepDefaultValue
 
         if self.obj_ is None or self.tparam_.objective != old_tparam.objective:
-            self.obj_ = ObjFunction().create(self.tparam_.objective)
+            self.obj_ = create_objective(self.tparam_.objective)
             self.obj_.configure(args)
-
-    def create_obj(self, objective):
-        obj_dict = {'multi'}
 
     def set_param(self, key, value):
         self.need_configuration_ = True
@@ -124,7 +124,9 @@ class LearnerConfiguration(Learner):
 
     def congifure_gbm(self, old, args):
         if not self.gbm_ or old.booster != self.tparam_.booster:
-            self.gbm_ = GBTree(self.learner_model_param_)
+            self.gbm_ = create_gbm(self.tparam_.booster,
+                                   self.generic_parameters_,
+                                   self.learner_model_param_)
         self.gbm_.configure(args)
 
 
