@@ -211,6 +211,7 @@ class LinearSquareLoss(RegLossObj):
         return x
 
     def gradient(self, predt, label):
+        print('tato')
         return predt - label
 
     def hessian(self, predt, label):

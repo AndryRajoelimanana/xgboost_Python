@@ -174,19 +174,21 @@ class GBTree(GradientBooster):
 
     def do_boost(self, p_fmat, gpair):
         """ Boost one iteration gpair of size [n_sample, 2, n_group]"""
+        grad = gpair[0]
+        hess = gpair[1]
         new_trees = []
         ngroup = self.model_.learner_model_param.num_output_group
         self.configure_with_known_data(self.cfg_, p_fmat)
         assert ngroup != 0
         if ngroup == 1:
-            new_tree = self.boost_new_trees(gpair[:, 0], gpair[:, 1],
+            new_tree = self.boost_new_trees(grad[:, 0], hess[:, 0],
                                             p_fmat)
             new_trees.append(new_tree)
         else:
             # assert gpair.shape[0] % ngroup == 0
             for gid in range(ngroup):
-                new_tree = self.boost_new_trees(gpair[:, 0, gid],
-                                                gpair[:, 1, gid],
+                new_tree = self.boost_new_trees(grad[:, gid],
+                                                hess[:, gid],
                                                 p_fmat)
                 new_trees.append(new_tree)
         self.commit_model(new_trees)

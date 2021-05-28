@@ -1,5 +1,6 @@
 from param.generic_param import GenericParameter
 from params import *
+from utils.random import ColumnSampler
 
 
 from tree.tree_model import RegTree
@@ -45,15 +46,16 @@ class ColMaker(TreeUpdater):
         self.param_.set_param(k, v)
 
     def update(self, grad, hess, fmat, trees):
-        # lr = self.param_.learning_rate
-        # self.param_.learning_rate = lr / len(trees)
-        # for tree in trees:
+        # rescale learning rate according to size of trees
+
+        lr = self.param_.learning_rate
+        self.param_.learning_rate = lr / len(trees)
         param = self.param_
         cparam = self.colmaker_train_param_
         for tree in trees:
             builder = ColMaker.Builder(param, cparam)
             builder.update(grad, hess, fmat, tree)
-        self.build = builder
+        self.param_.learning_rate = lr
 
     class Builder:
         def __init__(self, param, cparam):
@@ -66,20 +68,29 @@ class ColMaker(TreeUpdater):
             self.eval_fn = Evaluator()
             self.q_expand_ = [0]
             self.tree = RegTree()
+            self.col_samplers_ = ColumnSampler()
 
-        def update(self, grad, hess, data, tree):
+        def update(self, grad, hess, data, tree, f_weight=None):
             self.tree = tree
             self.data = data
             self.grad = grad
             self.hess = hess
             self.nrow = grad.shape[0]
             self.pos = self.positions()
+            num_col = data.shape[1]
+            if f_weight is None:
+                f_weight = np.full(num_col, 1.0)
             self.snode_ = [NodeEntry() for _ in range(tree.param.num_nodes)]
+
+            self.col_samplers_.init(num_col, f_weight,
+                                    self.param.colsample_bynode,
+                                    self.param.colsample_bylevel,
+                                    self.param.colsample_bytree)
 
             for depth in range(self.param.max_depth):
                 self.init_node_stat()
                 for nid in self.q_expand_:
-                    lw, rw = self.nodes_stat(nid)
+                    lw, rw = self.nodes_stat(nid, depth)
                     if lw is None:
                         self.tree[nid].set_leaf(self.snode_[nid].weight *
                                                 self.param.learning_rate)
@@ -98,7 +109,7 @@ class ColMaker(TreeUpdater):
         def init_node_stat(self):
             resize(self.snode_, self.tree.param.num_nodes, NodeEntry())
 
-        def nodes_stat(self, nid):
+        def nodes_stat(self, nid, depth):
             lr = self.param.learning_rate
             curr_pos = self.pos == nid
             grad = self.grad[curr_pos]
@@ -108,8 +119,7 @@ class ColMaker(TreeUpdater):
             weight = calc_weight(self.param, sum_grad, sum_hess)
             root_gain = calc_gain(self.param, sum_grad, sum_hess)
             dat = self.data[curr_pos, :]
-            loss, feat, val, l_s, r_s = self.find_split(dat, grad, hess)
-            print(f'nid: {nid}, loss: {loss}')
+            loss, feat, val, l_s, r_s = self.find_split(depth, dat, grad, hess)
             best = SplitEntry(loss, feat, val, l_s, r_s)
             self.snode_[nid] = NodeEntry(sum_grad, sum_hess,
                                          root_gain, weight, best)
@@ -121,11 +131,13 @@ class ColMaker(TreeUpdater):
             else:
                 return None, None
 
-        def find_split(self, dat, grad, hess):
+        def find_split(self, depth, dat, grad, hess):
             loss = np.finfo(np.float).min
             best_ind = best_val = left_sum = right_sum = None
             p = self.param
-            for icol in range(dat.shape[1]):
+            feat_set = self.col_samplers_.get_feature_set(depth)
+
+            for icol in feat_set:
                 col = dat[:, icol].copy()
                 ind_sort = np.argsort(col)
                 col = col[ind_sort]

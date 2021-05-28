@@ -1,17 +1,9 @@
 from sklearn import datasets
 from params import *
 from objective.loss_function import LinearSquareLoss
-# from scipy.sparse import csc_matrix
-# from tree.split_evaluator import TreeEvaluator
-# from updaters.update_colmaker import ThreadEntry
-from tree.tree_model import RegTree
-from param.gbtree_params import GBTreeTrainParam, GBTreeModelParam
-
-from param.train_param import TrainParam, ColMakerTrainParam, NodeEntry
-from param.train_param import SplitEntry
-from utils.eval_fn import Evaluator
-from utils.util import resize, GenericParameter
 from gbm.learner import LearnerImpl
+from utils.util import one_hot_encoding
+
 
 kRtEps = 1e-6
 
@@ -37,36 +29,26 @@ class Booster:
 
         if 'num_class' in param.keys():
             param['num_output_group'] = param['num_class']
+            label = one_hot_encoding(labels)
         elif 'num_output_group' in param.keys():
             param['num_class'] = param['num_output_group']
+            label = one_hot_encoding(labels)
         else:
             unique_label = len(np.unique(labels))
             if unique_label < 25:
                 param['num_class'] = unique_label
+                label = one_hot_encoding(labels)
             else:
                 param['num_class'] = 1
+                label = labels[..., np.newaxis]
 
-        self.learner = LearnerImpl(cache, labels, weights)
+        self.learner = LearnerImpl(cache, label, weights)
 
         if 'booster' in param.keys():
             self.booster = param['booster']
         else:
             self.booster = 'gbtree'
         self.set_param(param)
-
-        # self.mparam = GBTreeModelParam()
-        # self.tparam = GBTreeTrainParam()
-
-        # self.nrow = data.shape[0]
-        # self.ncol = data.shape[1]
-
-        # self.booster = 'gbtree'
-        # self.num_boost_round = num_boost_round
-        # self.grad = self.hess = None
-        # self.obj_ = obj_fn if obj_fn is not None else LinearSquareLoss()
-        # self.pos = np.zeros(self.nrow, dtype=int)
-        # initial
-        # self.set_gpair(base_score)
 
     def set_param(self, params, value=None):
         for k, v in params.items():
@@ -110,11 +92,11 @@ class Booster:
 
     def boost(self, dtrain, grad, hess):
         self.learner.configure()
-        gpair = np.vstack([grad, hess]).T
+        gpair = (grad, hess)
         self.learner.boost_one_iter(0, dtrain, gpair)
 
     def predict_raw(self, dmat, training, layer_begin, layer_end):
-        return self.gbm_
+        return 0
 
 
 if __name__ == "__main__":
@@ -122,17 +104,18 @@ if __name__ == "__main__":
     data0 = boston['data']
     X = data0[:, :-1]
     y = data0[:, -1]
-    gg = LinearSquareLoss()
-    base_scores = 0.5
+    # gg = LinearSquareLoss()
+    # base_scores = 0.5
 
-    base_s = np.full(y.shape, base_scores)
-    grad0 = gg.gradient(base_s, y)
-    hess0 = gg.hessian(base_s, y)
-    trees0 = [RegTree()]
+    # base_s = np.full(y.shape, base_scores)
+    # grad0 = gg.gradient(base_s, y)
+    # hess0 = gg.hessian(base_s, y)
+    # trees0 = [RegTree()]
 
-    bst = Booster({'num_parallel_tree': 5, 'updater': 'grow_colmaker'}, X, y)
-    bst.update(X, 0, LinearSquareLoss())
-    params = {'num_parallel_tree': 5, 'updater': 'grow_colmaker'}
+    # bst = Booster({'num_parallel_tree': 5, 'updater': 'grow_colmaker'}, X, y)
+    # bst.update(X, 0, LinearSquareLoss())
+    params = {'num_parallel_tree': 5, 'updater': 'grow_colmaker',
+              'colsample_bylevel': 0.5}
     bst = train(params, X, labels=y, obj=LinearSquareLoss(), num_boost_round=4)
 
     # colmaker = ColMaker()

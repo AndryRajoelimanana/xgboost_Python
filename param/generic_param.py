@@ -1,4 +1,5 @@
 from param.parameters import XGBoostParameter
+import numpy as np
 
 
 class GenericParameter(XGBoostParameter):
@@ -10,6 +11,7 @@ class GenericParameter(XGBoostParameter):
                  n_gpus=0):
         super(GenericParameter, self).__init__()
         self.seed = seed
+        self.rng = np.random.RandomState(seed)
         self.seed_per_iteration = seed_per_iteration
         self.nthread = nthread
         self.gpu_id = gpu_id

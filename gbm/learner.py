@@ -163,6 +163,7 @@ class LearnerImpl(LearnerIO):
         self.configure()
         # predt = self.predict_raw(train, False, 0, 0)
         self.gbm_.do_boost(train, in_gpair)
+        print('vita')
 
     def predict(self, data, output_margin, layer_begin, layer_end, training,
                 pred_leaf, pred_contribs, approx_contribs, pred_interactions):
