@@ -16,7 +16,9 @@ class Node:
         self.parent_ = parent
         self.cleft_ = cleft
         self.cright_ = cright
+
         self.info_ = self.Info()
+
         self.set_parent(self.parent_)
         self.set_split(split_ind, split_cond, default_left)
 

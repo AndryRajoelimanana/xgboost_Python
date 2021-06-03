@@ -1,6 +1,7 @@
 from param.generic_param import GenericParameter
 from params import *
-from utils.random import ColumnSampler
+from utils.random_sampler import ColumnSampler
+from utils.util import check_random_state
 
 
 from tree.tree_model import RegTree
@@ -33,34 +34,33 @@ def create_treeupdater(name, tparam):
 
 
 class ColMaker(TreeUpdater):
-    def __init__(self):
+    def __init__(self, random_state=0):
         super(ColMaker, self).__init__()
         self.param_ = TrainParam()
-        self.colmaker_train_param_ = ColMakerTrainParam()
+        self.colmaker_param_ = ColMakerTrainParam()
+        self.random_state = check_random_state(random_state)
 
     def configure(self, args):
         self.param_.update_allow_unknown(args)
-        self.colmaker_train_param_.update_allow_unknown(args)
+        self.colmaker_param_.update_allow_unknown(args)
 
     def set_param(self, k, v):
         self.param_.set_param(k, v)
 
     def update(self, grad, hess, fmat, trees):
         # rescale learning rate according to size of trees
-
         lr = self.param_.learning_rate
         self.param_.learning_rate = lr / len(trees)
-        param = self.param_
-        cparam = self.colmaker_train_param_
         for tree in trees:
-            builder = ColMaker.Builder(param, cparam)
+            builder = ColMaker.Builder(self.param_, self.colmaker_param_,
+                                       self.random_state)
             builder.update(grad, hess, fmat, tree)
         self.param_.learning_rate = lr
 
     class Builder:
-        def __init__(self, param, cparam):
-            self.param = param
-            self.cparam = cparam
+        def __init__(self, param, cparam, random_state):
+            self.param_ = param
+            self.colmaker_param_ = cparam
             self.grad = self.hess = None
             self.nrow = 0
             self.pos = self.data = None
@@ -68,7 +68,8 @@ class ColMaker(TreeUpdater):
             self.eval_fn = Evaluator()
             self.q_expand_ = [0]
             self.tree = RegTree()
-            self.col_samplers_ = ColumnSampler()
+            seed = random_state.randint(2**32)
+            self.col_samplers_ = ColumnSampler(seed)
 
         def update(self, grad, hess, data, tree, f_weight=None):
             self.tree = tree
@@ -77,25 +78,22 @@ class ColMaker(TreeUpdater):
             self.hess = hess
             self.nrow = grad.shape[0]
             self.pos = self.positions()
+
+            self.snode_ = [NodeEntry() for _ in range(tree.param.num_nodes)]
             num_col = data.shape[1]
             if f_weight is None:
-                f_weight = np.full(num_col, 1.0)
-            self.snode_ = [NodeEntry() for _ in range(tree.param.num_nodes)]
+                f_weight = []
 
-            self.col_samplers_.init(num_col, f_weight,
-                                    self.param.colsample_bynode,
-                                    self.param.colsample_bylevel,
-                                    self.param.colsample_bytree)
-
-            for depth in range(self.param.max_depth):
-                self.init_node_stat()
+            self.init_data(num_col, f_weight)
+            self.init_node_stat()
+            for depth in range(self.param_.max_depth):
                 for nid in self.q_expand_:
                     lw, rw = self.nodes_stat(nid, depth)
+                    e = self.snode_[nid]
                     if lw is None:
-                        self.tree[nid].set_leaf(self.snode_[nid].weight *
-                                                self.param.learning_rate)
+                        self.tree[nid].set_leaf(e.weight *
+                                                self.param_.learning_rate)
                     else:
-                        e = self.snode_[nid]
                         self.tree.expandnode(nid, e.best.split_index(),
                                              e.best.split_value,
                                              e.best.default_left(), e.weight,
@@ -104,37 +102,49 @@ class ColMaker(TreeUpdater):
                                              e.best.left_sum[1],
                                              e.best.right_sum[1], 0)
                 self.reset_position()
+                self.init_node_stat()
                 self.update_queue_expand()
+                if len(self.q_expand_) == 0:
+                    break
+
+        def init_data(self, num_col, f_weight):
+            self.col_samplers_.init(num_col, f_weight,
+                                    self.param_.colsample_bynode,
+                                    self.param_.colsample_bylevel,
+                                    self.param_.colsample_bytree)
 
         def init_node_stat(self):
             resize(self.snode_, self.tree.param.num_nodes, NodeEntry())
 
         def nodes_stat(self, nid, depth):
-            lr = self.param.learning_rate
+            lr = self.param_.learning_rate
             curr_pos = self.pos == nid
             grad = self.grad[curr_pos]
             hess = self.hess[curr_pos]
             sum_grad = grad.sum()
             sum_hess = hess.sum()
-            weight = calc_weight(self.param, sum_grad, sum_hess)
-            root_gain = calc_gain(self.param, sum_grad, sum_hess)
-            dat = self.data[curr_pos, :]
-            loss, feat, val, l_s, r_s = self.find_split(depth, dat, grad, hess)
-            best = SplitEntry(loss, feat, val, l_s, r_s)
+            weight = self.eval_fn.get_weight(self.param_, sum_grad, sum_hess)
+            root_gain = self.eval_fn.get_gain(self.param_, sum_grad, sum_hess)
             self.snode_[nid] = NodeEntry(sum_grad, sum_hess,
-                                         root_gain, weight, best)
+                                         root_gain, weight, None)
+
+            dat = self.data[curr_pos, :]
+            loss, feat, val, l_s, r_s = self.find_split(depth, dat,
+                                                        self.snode_[nid],
+                                                        grad, hess)
+            self.snode_[nid].best = SplitEntry(loss, feat, val, l_s, r_s)
 
             if loss > kRtEps:
-                left_w = self.eval_fn.get_weight(self.param, l_s[0], l_s[1])
-                right_w = self.eval_fn.get_weight(self.param, r_s[0], r_s[1])
+                left_w = self.eval_fn.get_weight(self.param_, l_s[0], l_s[1])
+                right_w = self.eval_fn.get_weight(self.param_, r_s[0], r_s[1])
                 return left_w * lr, right_w * lr
             else:
                 return None, None
 
-        def find_split(self, depth, dat, grad, hess):
+        def find_split(self, depth, dat, snode, grad, hess):
             loss = np.finfo(np.float).min
             best_ind = best_val = left_sum = right_sum = None
-            p = self.param
+            p = self.param_
             feat_set = self.col_samplers_.get_feature_set(depth)
 
             for icol in feat_set:
@@ -143,14 +153,15 @@ class ColMaker(TreeUpdater):
                 col = col[ind_sort]
                 new_grad = grad[ind_sort]
                 new_hess = hess[ind_sort]
-                gain = self.eval_fn.get_gain(p, grad.sum(), hess.sum())
-                total_grad = grad.sum()
-                total_hess = hess.sum()
-                grad_right = total_grad
-                hess_right = total_hess
+
+                total_grad = snode.sum_grad
+                total_hess = snode.sum_hess
+
                 # statistics for nan missing value
                 nan_stats = (grad[np.isnan(col)].sum(),
                              hess[np.isnan(col)].sum())
+                grad_right = total_grad - grad[np.isnan(col)].sum()
+                hess_right = total_hess - hess[np.isnan(col)].sum()
 
                 for i, d in enumerate(col):
                     if np.isnan(d):
@@ -174,7 +185,7 @@ class ColMaker(TreeUpdater):
                               nan_stats[1])
                     res_dright = self.eval_fn.calc_split_gain(p, sleft, sright)
 
-                    new_loss = max(res_dleft, res_dright) - gain
+                    new_loss = max(res_dleft, res_dright) - snode.root_gain
 
                     if new_loss > loss:
                         loss = new_loss

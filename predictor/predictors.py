@@ -1,4 +1,5 @@
 import numpy as np
+import numbers
 
 
 class Predictor:
@@ -54,6 +55,24 @@ def predict_batch_by_block_of_rows_kernel(batch, model, tree_begin, tree_end):
 class CPUPredictor(Predictor):
     def __init__(self, generic_param):
         super(CPUPredictor, self).__init__(generic_param)
+
+    @staticmethod
+    def init_prediction(model, nrow=1, base_margin=None):
+        ngroup = model.learner_model_param.num_output_group
+        n = ngroup * nrow
+        if isinstance(base_margin, np.ndarray):
+            assert n == base_margin.shape[0]
+            return base_margin
+        elif isinstance(base_margin, numbers.Number):
+            init_pred = np.full((nrow, ngroup), base_margin)
+            return init_pred
+        elif base_margin is None:
+            base_score = model.learner_model_param.base_score
+            base_margin = np.full((nrow, ngroup), base_score)
+            return base_margin
+        else:
+            raise Exception(f"Invalid base_margin: {base_margin}")
+
 
     @staticmethod
     def predict_dmatrix(data, model, tree_begin, tree_end):

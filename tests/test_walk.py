@@ -45,6 +45,9 @@ def walk(obj):
 
     return lambda cb: _walk(obj, cb)
 
+
+
+
 if __name__=="__main__":
     tree = {'a': 1, 'b': [9, 9, 6, 7, 6]}
 

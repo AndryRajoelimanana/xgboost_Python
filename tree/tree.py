@@ -33,7 +33,7 @@ class TreeModel:
         return self.leaf_vector[i * self.param.size_leaf_vector]
 
     def init_model(self):
-        n_node = self.param.num_roots
+        n_node = self.param.n
         self.param.num_nodes = n_node
         resize(self.nodes_, n_node, Node())
         resize(self.stats_, n_node, RTreeNodeStat())
@@ -47,13 +47,17 @@ class TreeModel:
         pright = self.alloc_node()
         self.nodes_[nid].cleft_ = pleft
         self.nodes_[nid].cright_ = pright
-        self.nodes_[self.nodes_[nid].cleft()].set_parent(nid, True)
-        self.nodes_[self.nodes_[nid].cright()].set_parent(nid, False)
+        node = self.nodes_[nid]
+        self.nodes_[node.left_child()].set_parent(nid, True)
+        self.nodes_[node.right_child()].set_parent(nid, False)
 
     def add_right_child(self, nid):
         pright = self.alloc_node()
-        self.nodes_[nid].right = pright
-        self.nodes_[self.nodes_[nid].right].set_parent(nid, False)
+        self.nodes_[nid].cright_ = pright
+        self.nodes_[self.nodes_[nid].cright_].set_parent(nid, False)
+
+    def alloc_node(self):
+        return 0
 
 
 class Segment:
@@ -90,7 +94,7 @@ class RegTree(TreeModel):
         super().__init__()
         self.param = TreeParam()
         self.param.num_nodes = 1
-        # self.param.num_roots = 1
+        # self.param_.num_roots = 1
         self.param.num_deleted = 0
         self.nodes_ = []
         resize(self.nodes_, self.param.num_nodes, Node())
@@ -258,10 +262,7 @@ class RegTree(TreeModel):
             split_index = self[nid].split_index()
             fvalue = feat[split_index]
             is_unknown = has_missing and (fvalue is None)
-            before_nid = nid
             nid = self.get_next(nid, fvalue, is_unknown, has_missing)
-            if nid is None:
-                print(nid)
         return nid
 
     def calculate_contributions(self, feat, out_contribs, condition,
@@ -419,8 +420,8 @@ class RegTree(TreeModel):
         #       self.param_.size_leaf_vector)
         return nd
 
-    def predict(self, feat, root_id=0):
-        pid = self.get_leaf_index(feat, root_id)
+    def predict(self, feat):
+        pid = self.get_leaf_index(feat)
         return self[pid].leaf_value()
 
     def __getitem__(self, nid):

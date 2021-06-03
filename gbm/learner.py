@@ -1,11 +1,13 @@
 from param.model_param import LearnerModelParamLegacy, LearnerModelParam
 from param.model_param import LearnerTrainParam
-from utils.util import resize
-# from gbm.gbms import GradientBooster
 from gbm.gbtree import create_gbm
 from objective.loss_function import LinearSquareLoss, create_objective
 import numpy as np
 from param.generic_param import GenericParameter
+from utils.util import check_random_state
+import time
+
+kRandSeedMagic = 127
 
 
 class DataSplitMode:
@@ -15,11 +17,11 @@ class DataSplitMode:
 
 
 class Learner:
-    def __init__(self):
+    def __init__(self, seed=0):
         self.obj_ = None
         self.gbm_ = None
         self.metrics_ = None
-        self.generic_parameters_ = GenericParameter()
+        self.generic_parameters_ = GenericParameter(seed=seed)
 
     def configure(self):
         pass
@@ -34,10 +36,11 @@ class Learner:
 class LearnerConfiguration(Learner):
     kEvalMetric = ''
 
-    def __init__(self, cache, obj=None):
-        super().__init__()
+    def __init__(self, cache, obj=None, seed=0):
+        super().__init__(seed)
         self.need_configuration_ = True
         self.data = cache
+        self.rng_ = check_random_state(seed)
 
         self.cfg_ = {}
         self.attributes_ = {}
@@ -61,11 +64,19 @@ class LearnerConfiguration(Learner):
         self.tparam_.update_allow_unknown(args)
         mparam_backup = self.mparam_
         self.mparam_.update_allow_unknown(args)
+
+        initialized = self.generic_parameters_.get_initialised()
+        old_seed = self.generic_parameters_.seed
+
         self.generic_parameters_.update_allow_unknown(args)
+
+        if not initialized or self.generic_parameters_.seed != old_seed:
+            self.rng_.seed(self.generic_parameters_.seed)
 
         self.configure_num_feature()
         args = self.cfg_
         self.configure_objective(old_tparam, args)
+
         if not self.learner_model_param_.initialized() or \
                 self.mparam_.base_score != mparam_backup.base_score:
             base_score = self.obj_.prob_to_margin(self.mparam_.base_score)
@@ -131,39 +142,39 @@ class LearnerConfiguration(Learner):
 
 
 class LearnerIO(LearnerConfiguration):
-    def __init__(self, cache):
-        super().__init__(cache)
+    def __init__(self, cache, seed=0):
+        super().__init__(cache, seed=seed)
 
 
 class LearnerImpl(LearnerIO):
-    def __init__(self, cache, labels=None, weights=None):
-        super(LearnerImpl, self).__init__(cache)
+    def __init__(self, cache, labels=None, weights=None, seed=0):
+        super(LearnerImpl, self).__init__(cache, seed=seed)
         self.labels_ = labels
-        # self.gbm_.model_.learner_model_param.num_output_group = 1
         self.weights_ = weights
 
     def update_one_iter(self, i_iter, train):
         self.configure()
-        predt = self.predict_raw(train, False, 0, 0)
-        n_group = self.mparam_.num_class
-        if n_group == 1:
-            gpair_ = self.obj_.get_gradient(predt, self.labels_, self.weights_,
-                                            i_iter)
-        else:
-            gpair_ = np.zeros((predt.shape[0], 2, n_group))
+        if self.generic_parameters_.seed_per_iteration:
+            self.rng_.seed(self.generic_parameters_.seed * kRandSeedMagic
+                           + i_iter)
 
-            for i in range(n_group):
-                label = self.labels_ == i
-                gpair_[:, :, i] = self.obj_.get_gradient(predt, label,
-                                                         self.weights_,
-                                                         i_iter)
+        predt = self.predict_raw(train, True, 0, 0)
+        n_group = self.mparam_.num_class
+        gpair_ = np.zeros((predt.shape[0], 2, n_group))
+        for i in range(n_group):
+            gpair_[:, :, i] = self.obj_.get_gradient(predt[:, i], self.labels_[
+                                                               :, i],
+                                                     self.weights_, i_iter)
         self.gbm_.do_boost(train, gpair_)
 
     def boost_one_iter(self, i_iter, train, in_gpair):
+        tic = time.perf_counter()
+        print(f'Iteration {i_iter}: Starting.....')
         self.configure()
-        # predt = self.predict_raw(train, False, 0, 0)
         self.gbm_.do_boost(train, in_gpair)
-        print('vita')
+        toc = time.perf_counter()
+        elapsed_time = toc - tic
+        print(f'Iteration {i_iter}: Finished in {elapsed_time:0.4f} seconds\n')
 
     def predict(self, data, output_margin, layer_begin, layer_end, training,
                 pred_leaf, pred_contribs, approx_contribs, pred_interactions):

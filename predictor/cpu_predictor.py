@@ -1,5 +1,6 @@
 from predictor.predictors import Predictor
 import numpy as np
+import numbers
 
 
 
@@ -7,7 +8,7 @@ import numpy as np
 def predict_by_all_trees(fmat, model, tree_begin, tree_end):
     n_group = model.learner_model_param.num_output_group
     n_sample = fmat.shape[0]
-    preds = np.zeros((n_sample, n_group))
+    preds = np.full((n_sample, n_group), model.learner_model_param.base_score)
     for tree_id in range(tree_begin, tree_end):
         gid = model.tree_info[tree_id]
         for i in range(n_sample):
@@ -19,6 +20,7 @@ def predict_by_all_trees(fmat, model, tree_begin, tree_end):
 def pred_value_by_one_tree(feats, tree):
     has_missing = np.isnan(feats).any()
     lid = tree.get_leaf_index(feats, has_missing)
+    print(f'leaf: {lid} , value: {tree[lid].leaf_value()}')
     return tree[lid].leaf_value()
 
 

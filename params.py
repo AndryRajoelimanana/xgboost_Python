@@ -4,7 +4,7 @@ import sys
 
 
 def thresholdL1(w, alpha):
-    if w > + alpha:
+    if w > alpha:
         return w - alpha
     if w < - alpha:
         return w + alpha

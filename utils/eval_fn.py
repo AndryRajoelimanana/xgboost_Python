@@ -17,6 +17,9 @@ class Evaluator:
     def get_gain_given_weight(p, sum_grad, sum_hess, w):
         if sum_hess <= 0:
             return 0
+        if p.max_delta_step == 0:
+            return (thresholdL1(sum_grad, p.reg_alpha))**2 / (sum_hess +
+                                                              p.reg_lambda)
         return -(2.0 * sum_grad * w + (sum_hess + p.reg_lambda) * (w * w))
 
     @staticmethod

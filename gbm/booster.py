@@ -1,8 +1,9 @@
 from sklearn import datasets
 from params import *
-from objective.loss_function import LinearSquareLoss
+from objective.regression_obj import LinearSquareLoss
 from gbm.learner import LearnerImpl
 from utils.util import one_hot_encoding
+import json
 
 
 kRtEps = 1e-6
@@ -20,7 +21,7 @@ def train(params, dtrain, num_boost_round=10, evals=(), obj=None, feval=None,
 
 class Booster:
     def __init__(self, param=None, cache=(), labels=None, weights=None,
-                 model_file=None):
+                 model_file=None, seed=0):
 
         param = param or {}
         self.data = cache
@@ -42,7 +43,7 @@ class Booster:
                 param['num_class'] = 1
                 label = labels[..., np.newaxis]
 
-        self.learner = LearnerImpl(cache, label, weights)
+        self.learner = LearnerImpl(cache, label, weights, seed)
 
         if 'booster' in param.keys():
             self.booster = param['booster']
@@ -62,20 +63,23 @@ class Booster:
         hess = obj_fn.hessian(pred, y)
         return grad, hess
 
-    def update(self, train, i, fobj=None):
+    def update(self, train, i_iter, fobj=None):
         if fobj is None:
-            self.learner.update_one_iter(i, train)
+            self.learner.update_one_iter(i_iter, train)
         else:
             ngroup = self.learner.learner_model_param_.num_output_group
-            if i == 0:
+            if i_iter == 0:
                 base_score = self.learner.mparam_.base_score
                 pred = np.full((train.shape[0], ngroup), base_score)
             else:
                 pred = self.predict(train, output_margin=True, training=True)
 
-            grad = fobj.gradient(pred, self.learner.labels_)
-            hess = fobj.hessian(pred, self.learner.labels_)
-            self.boost(train, grad, hess)
+            gpair = np.zeros((train.shape[0], 2, ngroup))
+            for i in range(ngroup):
+                gpair[:, :, i] = fobj.get_gradient(pred[:, i],
+                                                   self.learner.labels_[:, i],
+                                                   self.learner.weights_, i)
+            self.boost(train, gpair, i_iter)
 
     def predict(self, train, output_margin=False, ntree_limit=0,
                 pred_leaf=False, pred_contribs=False,
@@ -90,13 +94,46 @@ class Booster:
                                      pred_interactions)
         return preds
 
-    def boost(self, dtrain, grad, hess):
+    def boost(self, dtrain, gpair, i_iter):
         self.learner.configure()
-        gpair = (grad, hess)
-        self.learner.boost_one_iter(0, dtrain, gpair)
+        # gpair = (grad, hess)
+        self.learner.boost_one_iter(i_iter, dtrain, gpair)
 
     def predict_raw(self, dmat, training, layer_begin, layer_end):
         return 0
+
+    def print_tree(self):
+        tree_dict = {}
+        trees = self.learner.gbm_.model_.trees
+        for tid, tree in enumerate(trees):
+            for nid, node in enumerate(tree.nodes_):
+                if node.info_.split_cond is not None:
+                    tree_dict[nid] = f'f{node.sindex_} < {node.info_.split_cond}'
+                    lid = node.left_child()
+                    rid = node.right_child()
+                    print(f'{tid}-{nid}  {lid}-{rid}   f{node.sindex_}'
+                          f' {node.info_.split_cond}')
+                else:
+                    print(f'{tid}-{nid}  Leaf')
+
+    def get_tree(self, tid=0, nid=0):
+        tree = self.learner.gbm_.model_.trees[tid]
+        return serializable_tree(tree, nid)
+
+
+def serializable_tree(tree, nid=0):
+    node = tree.nodes_[nid]
+    if not node.info_.split_cond:
+        return "Leaf"
+    lid = node.left_child()
+    rid = node.right_child()
+
+    obj = {f'cond-{nid}': f'f{node.sindex_} < '
+                          f'{node.info_.split_cond}',
+           f'left-{lid}': serializable_tree(tree, lid),
+           f'right-{rid}':  serializable_tree(tree, rid)}
+
+    return obj
 
 
 if __name__ == "__main__":
@@ -104,44 +141,13 @@ if __name__ == "__main__":
     data0 = boston['data']
     X = data0[:, :-1]
     y = data0[:, -1]
-    # gg = LinearSquareLoss()
-    # base_scores = 0.5
 
-    # base_s = np.full(y.shape, base_scores)
-    # grad0 = gg.gradient(base_s, y)
-    # hess0 = gg.hessian(base_s, y)
-    # trees0 = [RegTree()]
-
-    # bst = Booster({'num_parallel_tree': 5, 'updater': 'grow_colmaker'}, X, y)
-    # bst.update(X, 0, LinearSquareLoss())
     params = {'num_parallel_tree': 5, 'updater': 'grow_colmaker',
               'colsample_bylevel': 0.5}
-    bst = train(params, X, labels=y, obj=LinearSquareLoss(), num_boost_round=4)
+    bst = train(params, X, labels=y, obj=LinearSquareLoss(), num_boost_round=5)
 
-    # colmaker = ColMaker()
-    # colmaker.update(grad0, hess0, X, trees0[0])
+    tree0_dict = bst.get_tree(0)
 
-    # gpair = []
-    # stats = GradStats()
-    #
-    # for i in range(len(grad)):
-    #     gpair.append(GradientPair(grad[i], hess[i]))
-    #     stats.add(GradientPair(grad[i], hess[i]))
-    #
-    # bb = DMat(csc_matrix(X))
-    # nnn = bb.get_col(1)
-    #
-    # # pos = positions(gpair)
-    #
-    # p = TrainParam()
-    # ev = TreeEvaluator(p, 12, -1).get_evaluator()
-    # snode_stats = get_snode(pos, gpair)
-    # snode_weight = ev.calc_weight(-1, p, snode_stats)
-    # snode_root_gain = ev.calc_gain(-1, p, snode_stats)
-    #
-    # bbb = get_loss(X, p, grad, hess)
-
-    # w = calc_weight(p, gpair)
-    # gain = calc_gain(p, stats)
-
-    print(0)
+    pred = bst.predict(X, output_margin=True, training=True)
+    # print(pred[:, 0])
+    # print(json.dumps(tree0_dict, indent=4))

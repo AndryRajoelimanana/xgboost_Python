@@ -9,8 +9,8 @@ class ObjFunction:
     IObjFunction xgboost.learner : learner/objective.h
     interface
     """
-    # def __init__(self):
-        # self.tparam_ = GenericParameter()
+    def __init__(self):
+        self.tparam_ = GenericParameter()
     
     def configure(self, args):
         pass
@@ -42,7 +42,6 @@ def create_objective(name):
     return dict_obj[name]
 
 
-
 class RegLossObj(ObjFunction):
     def __init__(self, is_classifier=True):
         super(RegLossObj, self).__init__()
@@ -57,14 +56,17 @@ class RegLossObj(ObjFunction):
         pass
 
     def get_gradient(self, preds, labels, weights, it):
-        n, n_group = preds.shape
+        n = preds.shape[0]
         nstep = len(labels)
         assert n % nstep == 0, 'labels_ are not correctly provided'
         gpair = np.zeros((n, 2))
         p = self.pred_transform(preds)
         weights[labels == 1] *= self.scale_pos_weight
-        gpair[:, 0] = self.gradient(labels, p) * weights
-        gpair[:, 1] = self.hessian(labels, p) * weights
+        try:
+            gpair[:, 0] = self.gradient(labels, p) * weights
+            gpair[:, 1] = self.hessian(labels, p) * weights
+        except:
+            print(0)
         return gpair
 
     def gradient(self, y, ypred):
