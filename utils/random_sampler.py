@@ -34,14 +34,16 @@ class ColumnSampler:
             return p_features
         features = p_features
         assert len(features) > 0
-        n = np.maximum(1, np.floor(colsample*len(features)))
-        if len(self.feature_weights_) != 0:
-            new_features = weighted_sampling_without_replacement( self.rng_,
-                p_features, self.feature_weights_, n)
+        n = np.maximum(1, np.floor(colsample * len(features)))
+        fweights = self.feature_weights_
+        if len(fweights) != 0:
+            new_features = weighted_sampling_without_replacement(self.rng_,
+                                                                 p_features,
+                                                                 fweights,
+                                                                 n)
         else:
             new_features = features.copy()
             new_features = shuffle_std(new_features, self.rng_)
-            # self.rng_.shuffle(new_features)
             resize(new_features, n)
         return sorted(new_features)
 
@@ -70,6 +72,7 @@ def weighted_sampling_without_replacement(rng, feat, weights, n):
     resize(ind, n)
     return [feat[i] for i in ind]
 
+
 def uniform_real_distribution(rng, param=(0, 2147483647), num_bit=24):
     b = np.minimum(24, num_bit)
     r = 2 ** 32
@@ -84,15 +87,17 @@ def uniform_real_distribution(rng, param=(0, 2147483647), num_bit=24):
     return (summ / tmpp) * (param[1] - param[0]) + param[0]
 
 
-def uniform_int_distribution(rng, param=(0, 2147483647)):
+def uniform_int_distribution(rng, min_value=0, max_value=2147483647):
     """
     https://gcc.gnu.org/onlinedocs/libstdc++/libstdc++-api-4.5/a00987_source.html
+    :param max_value:
+    :param min_value:
     :param_ rng:
-    :param_ param:
     :return:
     """
-    urange = param[1] - param[0]
-    urnrange = 2**32 - 1
+    rng = check_random_state(rng)
+    urange = max_value - min_value
+    urnrange = 2 ** 32 - 1
     tmp = 0
     ret = 2 ** 34
     if urnrange > urange:
@@ -100,17 +105,17 @@ def uniform_int_distribution(rng, param=(0, 2147483647)):
         scaling = int(urnrange / uerange)
         past = uerange * scaling
         while ret >= past:
-            ret = rng.randint(2**32)
+            ret = rng.randint(2 ** 32)
         ret = int(ret / scaling)
     elif urnrange < urange:
         while ret > urange or ret < tmp:
             uerngrange = urnrange + 1
-            tmp = uerngrange * uniform_int_distribution(rng,
-                                                        (0, urange/uerngrange))
-            ret - tmp + rng.randint(2**32)
+            new_max = urange / uerngrange
+            tmp = uerngrange * uniform_int_distribution(rng, 0, new_max)
+            ret - tmp + rng.randint(2 ** 32)
     else:
-        ret = rng.randint(2**32)
-    return ret + param[0]
+        ret = rng.randint(2 ** 32)
+    return ret + min_value
 
 
 def shuffle_std(data, rng, crange=(0, 0)):
@@ -121,10 +126,10 @@ def shuffle_std(data, rng, crange=(0, 0)):
         last = crange[1]
     urnrange = 2 ** 32 - 1
     urange = last - first + 1
-    if (urnrange/urange) >= urange:
+    if (urnrange / urange) >= urange:
         i = first + 1
         if urange % 2 == 0:
-            i_rnd = first + uniform_int_distribution(rng, (0, 1))
+            i_rnd = first + uniform_int_distribution(rng, 0, 1)
             swap(data, i, i_rnd)
             i += 1
         while i <= last:
@@ -135,8 +140,8 @@ def shuffle_std(data, rng, crange=(0, 0)):
             swap(data, i, first + a2)
             i += 1
     else:
-        for i in range(first+1, last):
-            i_rnd = uniform_int_distribution(rng, (0, i - first))
+        for i in range(first + 1, last):
+            i_rnd = uniform_int_distribution(rng, 0, i - first)
             swap(data, i, first + i_rnd)
     return data
 
@@ -148,22 +153,15 @@ def swap(data, i1, i2):
 
 
 def gen_two_uniform_ints(rng, a, b):
-    x = uniform_int_distribution(rng, (0, int(a*b - 1)))
+    x = uniform_int_distribution(rng, 0, int(a * b - 1))
     return x // b, x % b
 
 
 if __name__ == '__main__':
     nn1 = np.random.RandomState(0)
     ppp = []
-    for i in range(5):
+    for _ in range(5):
         ppp.append(uniform_real_distribution(nn1, (0, 5)))
-    print(ppp)
-
-    nn1 = np.random.RandomState(0)
-
-    ppp = []
-    for i in range(10):
-        ppp.append(uniform_int_distribution(nn1, (0, (2**31) -1)))
     print(ppp)
 
     print('numpy')
