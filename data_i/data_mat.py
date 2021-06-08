@@ -1,6 +1,4 @@
 import numpy as np
-from collections import defaultdict
-from info_class import MetaInfo
 
 
 class bst_gpair:

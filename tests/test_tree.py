@@ -19,8 +19,6 @@ def test_tree(dm):
     bst.save_model(fname=model_path)
     with open(model_path, 'r') as fd:
         j_model = json.load(fd)
-    print(0)
-
 
 
 if __name__ == '__main__':

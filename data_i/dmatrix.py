@@ -1,4 +1,4 @@
-from info_class import MetaInfo
+from fako.info_class import MetaInfo
 
 # learner/dmatrix.h
 

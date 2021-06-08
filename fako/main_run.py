@@ -19,7 +19,7 @@ class BoostLearnTask:
         self.name_fmap = "NULL"
         self.name_pred = "pred.txt"
         self.name_dump = "dump.txt"
-        self.model_dir_path = "./"
+        self.model_dir_path = "../"
         self.data = None
         self.dcache = []
         self.learner = BoostLearner()
