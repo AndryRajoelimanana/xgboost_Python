@@ -1,5 +1,5 @@
 from param.generic_param import GenericParameter
-from params import *
+from param.params import *
 from utils.random_sampler import ColumnSampler
 from utils.util import check_random_state
 
@@ -20,7 +20,8 @@ class TreeUpdater:
     def __init__(self):
         self.tparam_ = GenericParameter()
 
-    def can_modify_tree(self):
+    @staticmethod
+    def can_modify_tree():
         return False
 
 
@@ -247,5 +248,3 @@ class ColMaker(TreeUpdater):
     @staticmethod
     def name():
         return "grow_colmaker"
-
-

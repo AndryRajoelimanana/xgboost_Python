@@ -1,5 +1,5 @@
 from predictor.predictors import *
-from predictor.cpu_predictor import *
+from fako.cpu_predictor import *
 
 
 class GPUPredictor(Predictor):

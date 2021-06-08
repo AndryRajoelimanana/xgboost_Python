@@ -3,7 +3,7 @@ from param.gbtree_params import GBTreeModelParam
 
 
 class GBTreeModel:
-    def __init__(self, learner_model):
+    def __init__(self, learner_model=None):
         self.learner_model_param = LearnerModelParam(learner_model, 0.5)
         self.param = GBTreeModelParam()
         self.trees_to_update = []

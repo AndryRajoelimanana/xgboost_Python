@@ -1,5 +1,5 @@
 from param.parameters import XGBoostParameter
-from objective.loss_function import ObjFunction
+from objective.objective_interface import ObjFunction
 import numpy as np
 
 
@@ -27,7 +27,7 @@ class RegLossObj(ObjFunction):
 
     def get_gradient(self, preds, labels, weights, it):
         n = preds.shape[0]
-        nstep = len(labels)
+        nstep = labels.shape[0]
         assert n % nstep == 0, 'labels_ are not correctly provided'
         gpair = np.zeros((n, 2))
         ndata = len(preds)

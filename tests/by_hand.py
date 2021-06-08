@@ -1,12 +1,9 @@
 from sklearn import datasets
-from params import *
+from param.params import *
 from objective.loss_function import LinearSquareLoss
 from scipy.sparse import csc_matrix
-from tree.split_evaluator import TreeEvaluator
-from updaters.update_colmaker import ThreadEntry
+from fako.split_evaluator import TreeEvaluator
 from tree.tree_model import RegTree
-from param.gbt_tparam import GBTreeTrainParam
-
 
 
 class Entry:

@@ -1,7 +1,7 @@
 import numpy as np
 from data_i.data_mat import bst_gpair
 from objective.loss_function import LinearSquare
-from tree.gbtree import GBTree
+from fako.gbtree import GBTree
 from data_i.simple_matrix import DMatrix
 import sys
 from sklearn import datasets

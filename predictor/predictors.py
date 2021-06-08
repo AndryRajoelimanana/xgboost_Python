@@ -64,7 +64,8 @@ class CPUPredictor(Predictor):
             assert n == base_margin.shape[0]
             return base_margin
         elif isinstance(base_margin, numbers.Number):
-            init_pred = np.full((nrow, ngroup), base_margin)
+            base_score = base_margin
+            init_pred = np.full((nrow, ngroup), base_score)
             return init_pred
         elif base_margin is None:
             base_score = model.learner_model_param.base_score
@@ -72,7 +73,6 @@ class CPUPredictor(Predictor):
             return base_margin
         else:
             raise Exception(f"Invalid base_margin: {base_margin}")
-
 
     @staticmethod
     def predict_dmatrix(data, model, tree_begin, tree_end):

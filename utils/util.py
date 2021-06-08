@@ -1,5 +1,8 @@
 import numpy as np
 import numbers
+import re
+
+fmin = np.finfo(np.float).min
 
 
 def resize(lst, num, default=0):
@@ -12,7 +15,8 @@ def resize(lst, num, default=0):
 
 
 def to_lower(in_str):
-    return ' '.join(re.split("([A-Z][^A-Z]*)", in_str)).strip().replace('  ', '_').lower()
+    new_str = ' '.join(re.split("([A-Z][^A-Z]*)", in_str))
+    return new_str.strip().replace('  ', '_').lower()
 
 
 def sample_binary(p):
@@ -25,11 +29,11 @@ def sigmoid(x):
 
 
 def softmax(score):
-    score = np.asarray(score, dtype=float)
-    score_max = np.max(score)
-    score = np.exp(score - score_max)
-    score /= np.sum(score, axis=1)[:, np.newaxis]
-    return score
+    new_score = np.maximum(score, fmin)
+    score_max = np.max(new_score)
+    new_score = np.exp(new_score - score_max)
+    new_score /= np.sum(new_score)
+    return new_score
 
 
 def one_hot_encoding(y):

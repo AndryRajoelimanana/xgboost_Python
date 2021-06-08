@@ -1,6 +1,6 @@
 from param.model_param import LearnerModelParamLegacy, LearnerModelParam
 from param.model_param import LearnerTrainParam
-from gbm.gbtree import create_gbm
+from gbm.gradient_booster import create_gbm
 from objective.loss_function import LinearSquareLoss, create_objective
 import numpy as np
 from param.generic_param import GenericParameter
@@ -11,9 +11,9 @@ kRandSeedMagic = 127
 
 
 class DataSplitMode:
-  kAuto = 0
-  kCol = 1
-  kRow = 2
+    kAuto = 0
+    kCol = 1
+    kRow = 2
 
 
 class Learner:
@@ -29,8 +29,9 @@ class Learner:
     def allow_lazy_check_point(self):
         self.gbm_.allow_lazy_check_point()
 
-    def create(self, cache):
-        return LearnerImpl(cache)
+    @staticmethod
+    def create(cache, labels=None, weights=None, seed=0):
+        return LearnerImpl(cache, labels, weights, seed)
 
 
 class LearnerConfiguration(Learner):
@@ -102,9 +103,9 @@ class LearnerConfiguration(Learner):
                                                      self.cfg_):
                     self.tparam_.objective = "multi:softmax"
 
-        if 'max_delta_step' not in self.cfg_ and 'objective' in self.cfg_ and\
+        if 'max_delta_step' not in self.cfg_ and 'objective' in self.cfg_ and \
                 self.tparam_.objective == 'count:poisson':
-            self.cfg_['max_delta_step'] = 0.7   # kMaxDeltaStepDefaultValue
+            self.cfg_['max_delta_step'] = 0.7  # kMaxDeltaStepDefaultValue
 
         if self.obj_ is None or self.tparam_.objective != old_tparam.objective:
             self.obj_ = create_objective(self.tparam_.objective)
@@ -163,7 +164,7 @@ class LearnerImpl(LearnerIO):
         gpair_ = np.zeros((predt.shape[0], 2, n_group))
         for i in range(n_group):
             gpair_[:, :, i] = self.obj_.get_gradient(predt[:, i], self.labels_[
-                                                               :, i],
+                                                                  :, i],
                                                      self.weights_, i_iter)
         self.gbm_.do_boost(train, gpair_)
 
@@ -200,6 +201,13 @@ class LearnerImpl(LearnerIO):
     def predict_raw(self, data, training, layer_begin, layer_end):
         predt = self.gbm_.predict_batch(data, training, layer_begin, layer_end)
         return predt
+
+    def predict_interactionContributions(self, data, layer_begin,
+                                         layer_end,
+                                         approx_contribs):
+        return self.gbm_.predict_contribution(data, layer_begin,
+                                              layer_end,
+                                              approx_contribs)
 
     def boosted_round(self):
         if not self.gbm_:

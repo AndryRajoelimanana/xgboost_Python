@@ -1,7 +1,8 @@
-from tree.tree_model_helper import *
+# from fako.tree import *
 from utils.util import resize
 from param.tree_model_param import TreeParam
 from data_i.data import FeatureType
+from tree.tree_model_helper import *
 
 
 class RegTree:
@@ -184,7 +185,7 @@ class RegTree:
             return True
 
         self.walk_tree(spl)
-        return self._nsplits
+        return _nsplits
 
     def expandnode(self, nid, split_index, split_value, default_left,
                    base_weight, left_leaf_weight, right_leaf_weight,
@@ -259,6 +260,6 @@ class RegTree:
     def _save_categorical_split(self, inj):
         pass
 
-    def predict(self, feat, root_id=0):
+    def predict(self, feat):
         pid = self.get_leaf_index(feat)
         return self[pid].leaf_value()

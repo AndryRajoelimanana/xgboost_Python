@@ -1,4 +1,4 @@
-from params import thresholdL1
+from param.params import thresholdL1
 import numpy as np
 
 

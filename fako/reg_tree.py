@@ -1,5 +1,5 @@
 import numpy as np
-from tree.tree import RegTree
+
 
 # tree/model.h
 

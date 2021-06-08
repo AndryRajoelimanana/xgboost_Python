@@ -1,5 +1,5 @@
 import numpy as np
-from params import TrainParam, GradStats, SplitEntry
+from param.params import TrainParam, GradStats, SplitEntry
 from utils.util import resize, sample_binary
 from data_i.simple_matrix import DMatrix
 from sklearn import datasets

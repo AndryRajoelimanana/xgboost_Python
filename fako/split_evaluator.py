@@ -1,5 +1,5 @@
-import params
-from params import *
+from param import params
+from param.params import *
 from utils.util import resize
 
 

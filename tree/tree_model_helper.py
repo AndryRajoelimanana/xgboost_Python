@@ -1,6 +1,5 @@
 import numpy as np
 
-
 kDeletedNodeMarker = np.uint32(-1)
 kInvalidNodeId = -1
 kRoot = 0

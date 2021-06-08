@@ -1,12 +1,12 @@
 import numpy as np
 from utils.util import resize
-from updaters.colmaker import ColMaker
-from updaters.pruner import TreePruner
-from updaters.refresher import TreeRefresher
-from tree.tree import RegTree
+from fako.colmaker import ColMaker
+from fako.pruner import TreePruner
+from fako.refresher import TreeRefresher
+from fako.tree import RegTree
 from data_i.data_mat import bst_gpair
 from enum import Enum
-from gbm.gbms import GradientBooster
+from fako.gbms import GradientBooster
 
 
 class TreeMethod(Enum):
