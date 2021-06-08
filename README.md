@@ -1,9 +1,9 @@
 # xgboost ML written in Python
 
 
-This is a pure python version of all algorithms (steps) in the xgboost 
-package (originally written in C++). All randomizations used are the same as 
-in the original package (Mersenne Twister pseudo-random number generator, 
+This is a pure python version of all algorithms (steps) in the [xgboost 
+package](https://github.com/dmlc/xgboost) (originally written in C++). All randomizations used are the 
+same as in the original package (Mersenne Twister pseudo-random number generator, 
 MT19937). Drawn random values and shuffling are similar to those from C++ 
 standard 
 `uniform_int_distribution`, `uniform_real_distribution` and `shuffle`. 
@@ -11,7 +11,7 @@ standard
 
 
 **DO NOT USE THIS** program, this was only meant to show all gradient 
-boosting steps implemented in xgboost in an easy-to-read programing language 
+boosting steps implemented in [xgboost](https://github.com/dmlc/xgboost) in an easy-to-read programing language 
 (Python).
 
 
