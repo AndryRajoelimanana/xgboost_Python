@@ -8,6 +8,11 @@ kNumerical = 0
 kCategorical = 1
 
 
+class FeatureType:
+    kNumerical = 0
+    kCategorical = 1
+
+
 class Node:
     def __init__(self, cleft=-1, cright=-1, parent=-1,
                  split_ind=0, split_cond=None,

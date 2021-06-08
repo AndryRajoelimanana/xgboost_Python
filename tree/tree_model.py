@@ -1,7 +1,5 @@
-# from fako.tree import *
 from utils.util import resize
 from param.tree_model_param import TreeParam
-from data_i.data import FeatureType
 from tree.tree_model_helper import *
 
 
