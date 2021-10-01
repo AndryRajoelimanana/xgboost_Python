@@ -164,8 +164,11 @@ if __name__ == "__main__":
     X = data0[:, :-1]
     y = data0[:, -1]
 
-    parms = {'updater': 'shotgun',
-             'booster': 'gblinear', 'learning_rate': 1.0}
+    # parms = {'updater': 'shotgun',
+    #         'booster': 'gblinear', 'learning_rate': 1.0}
+
+    parms = {'learning_rate': 1.0}
+
     bst = train(parms, X, labels=y, num_boost_round=10)
     predictions = bst.predict(X)
 

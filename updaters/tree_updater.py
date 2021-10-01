@@ -105,6 +105,8 @@ class ColMaker(TreeUpdater):
                 self.reset_position()
                 self.init_node_stat()
                 self.update_queue_expand()
+                if depth == self.param_.max_depth - 1:
+                    print(0)
                 if len(self.q_expand_) == 0:
                     break
 
@@ -205,25 +207,23 @@ class ColMaker(TreeUpdater):
 
         def positions(self):
             pos = np.zeros(self.nrow, dtype=int)
-            pos[self.hess < 0] = -1
+            pos[self.hess < 0] = ~pos[self.hess < 0]
             return pos
 
         def reset_position(self):
             for nid in self.q_expand_:
                 feat = self.tree[nid].split_index()
                 val = self.tree[nid].split_cond()
-                curr_pos = (np.abs(self.pos) == nid)
+                self.pos[self.pos < 0] = ~self.pos[self.pos < 0]
+                curr_pos = self.pos == nid
                 col = self.data[:, feat]
 
                 is_leaf = self.tree[nid].is_leaf()
                 if not is_leaf:
                     i_left = curr_pos & (col < val)
                     i_right = curr_pos & (col >= val)
-                    sign_l = np.sign(self.pos[i_left]) + (self.pos[i_left] == 0)
-                    sign_r = np.sign(self.pos[i_right]) + (
-                            self.pos[i_right] == 0)
-                    self.pos[i_left] = self.tree[nid].left_child() * sign_l
-                    self.pos[i_right] = self.tree[nid].right_child() * sign_r
+                    self.pos[i_left] = self.tree[nid].left_child()
+                    self.pos[i_right] = self.tree[nid].right_child()
 
                 else:
                     if self.tree[nid].right_child() == -1:
